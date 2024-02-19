@@ -59,13 +59,12 @@ def scrape_data(nace_code, location, temp_pdf_filename, option, driver):
 
         nace_input = driver.find_element(By.ID, 'nacecodes')
         
-        match option:
-            case 1:
-                municipality_selector = ('gem', 'gemeente1')
-            case 2:
-                municipality_selector = ('gemb', 'gemeente0')
-            case 3:
-                municipality_selector = ('post', 'postnummer1')
+        if option == 1:
+            municipality_selector = ('gem', 'gemeente1')
+        elif option == 2:
+            municipality_selector = ('gemb', 'gemeente0')
+        elif option == 3:
+            municipality_selector = ('post', 'postnummer1')
 
         municipality_radio, municipality_input = [driver.find_element(By.ID, id) for id in municipality_selector]
         search_button = driver.find_element(By.NAME, 'actionLu')
