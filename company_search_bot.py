@@ -52,29 +52,6 @@ function_get_companies = {
         }
     }
 
-function_get_NACE = {
-        "name": "get_NACE",
-        "description": "retrieves the relevant NACE codes of the user question",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "NACE": {
-                    "type": "array",
-                    "items": {
-                        "type": "integer"
-                    },
-                    "minItems": 1,
-                    "maxItems": 10, 
-                    "description": "This argument is a list of NACE code strings relevant to the user question."
-                },
-            },
-            "required": [
-                "NACE"
-            ]
-        }
-    }
-
-
 # Define the HTML and CSS for the custom notification
 def custom_notification(status_message):
     if status_message:
