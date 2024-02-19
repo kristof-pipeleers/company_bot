@@ -16,10 +16,10 @@ from langchain.output_parsers import StructuredOutputParser
 from scrapers import KBO_scraper
 import numpy as np
 
-google_key = st.secrets["GOOGLE_API_KEY"]
 organization_id = st.secrets["OPENAI_ORG_ID"]
 assistant_id = st.secrets["OPENAI_ASSISTANT_ID"]
 openai_key = st.secrets["OPENAI_KEY"]
+google_key = st.secrets["GOOGLE_API_KEY"]
 
 client = OpenAI(api_key=openai_key, organization=organization_id)
 
