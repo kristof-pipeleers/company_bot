@@ -13,9 +13,9 @@ from langchain.output_parsers import ResponseSchema
 from langchain.output_parsers import StructuredOutputParser
 from scrapers import KBO_scraper
 import numpy as np
-__import__('pysqlite3')
-import sys
-sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
+# __import__('pysqlite3')
+# import sys
+# sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
 
 organization_id = st.secrets["OPENAI_ORG_ID"]
 assistant_id_3_5 = st.secrets["OPENAI_ASSISTANT_ID_3_5"]
@@ -324,7 +324,7 @@ with st.sidebar:
     elif selected_model == 'gpt-4-1106-preview':
         client, assistant, assistant_thread = load_openai_client_and_assistant(assistant_id_4)
     
-    st.markdown('📖 Want more info about this chatbot? Conact info@werecircle.be')
+    st.markdown('📖 Want more info about this chatbot? Contact info@werecircle.be')
 
     image_urls = [
         'images/werecircle-logo.png',
@@ -333,16 +333,20 @@ with st.sidebar:
 
     cols = st.sidebar.columns(len(image_urls))
     for col, url in zip(cols, image_urls):
-        col.image(url)
+        col.image(url, width=150)
 
 # Store LLM generated responses
 if "messages" not in st.session_state.keys():
-    st.session_state.messages = [{"role": "assistant", "content": "How may I assist you today?"}]
+    st.session_state.messages = [{"role": "assistant", "content": "Hoe kan ik u vandaag van dienst zijn?"}]
 
 # Display or clear chat messages
 for message in st.session_state.messages:
-    with st.chat_message(message["role"], avatar="🍃"):
-        st.write(message["content"])
+    if message["role"] == "user":
+        with st.chat_message(message["role"], avatar="👤"):
+            st.write(message["content"])
+    else:
+        with st.chat_message(message["role"], avatar="🍃"):
+            st.write(message["content"])
 
 def clear_chat_history():
     st.session_state.messages = [{"role": "assistant", "content": "How may I assist you today?"}]
