@@ -87,9 +87,14 @@ def custom_notification(status_message):
 
 # Set openAi client , assistant ai and assistant ai thread
 @st.cache_resource
-def load_openai_client_and_assistant(assistant_id):
+def load_openai_client_and_assistant(llm):
     client          = OpenAI(api_key=openai_key)
-    my_assistant    = client.beta.assistants.retrieve(assistant_id)
+    my_assistant = client.beta.assistants.create(
+            instructions=system_message,
+            model=llm,
+            tools=[{"type": "function", "function": function_get_companies}],
+            name=f"Company Search Bot"
+        )
     thread          = client.beta.threads.create()
 
     return client, my_assistant, thread
@@ -319,10 +324,8 @@ with st.sidebar:
 
     st.subheader('Models and information')
     selected_model = st.sidebar.selectbox('Choose an OpenAI model', ['gpt-3.5-turbo-1106', 'gpt-4-1106-preview'], key='selected_model')
-    if selected_model == 'gpt-3.5-turbo-1106':
-        client, assistant, assistant_thread = load_openai_client_and_assistant(assistant_id_3_5)
-    elif selected_model == 'gpt-4-1106-preview':
-        client, assistant, assistant_thread = load_openai_client_and_assistant(assistant_id_4)
+    client, assistant, assistant_thread = load_openai_client_and_assistant(selected_model)
+
     
     st.markdown('📖 Want more info about this chatbot? Contact info@werecircle.be')
 
@@ -349,7 +352,7 @@ for message in st.session_state.messages:
             st.write(message["content"])
 
 def clear_chat_history():
-    st.session_state.messages = [{"role": "assistant", "content": "How may I assist you today?"}]
+    st.session_state.messages = [{"role": "assistant", "content": "Hi! :wave: Hoe kan ik u vandaag van dienst zijn?"}]
 st.sidebar.button('Clear Chat History', on_click=clear_chat_history)
 
 # User-provided prompt
