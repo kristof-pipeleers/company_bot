@@ -18,10 +18,7 @@ import sys
 sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
 
 organization_id = st.secrets["OPENAI_ORG_ID"]
-openai_key = st.secrets["OPENAI_KEY"]
 google_key = st.secrets["GOOGLE_API_KEY"]
-
-client = OpenAI(api_key=openai_key, organization=organization_id)
 
 file_loader = FileSystemLoader('.')
 env = Environment(loader=file_loader)
@@ -86,7 +83,7 @@ def custom_notification(status_message):
 # Set openAi client , assistant ai and assistant ai thread
 @st.cache_resource
 def load_openai_client_and_assistant(llm):
-    client          = OpenAI(api_key=openai_key)
+    client          = OpenAI(api_key=os.environ['OPENAI_KEY'])
     my_assistant = client.beta.assistants.create(
             instructions=system_message,
             model=llm,
@@ -153,7 +150,7 @@ def get_relevant_NACE(industry, num):
 
     custom_notification(f"Retrieving relevant NACE codes for your question ...")
    
-    client = OpenAI(api_key=openai_key, organization=organization_id)
+    client = OpenAI(api_key=os.environ['OPENAI_KEY'], organization=organization_id)
     
     # data = load_data("Nacebel-2008-FR-NL-DE-EN.csv")
     # splitter = RecursiveCharacterTextSplitter(
@@ -162,7 +159,7 @@ def get_relevant_NACE(industry, num):
     # )
     # splitted_docs = splitter.split_documents(data)
 
-    embeddings_model = OpenAIEmbeddings(openai_api_key=openai_key)
+    embeddings_model = OpenAIEmbeddings(openai_api_key=os.environ['OPENAI_KEY'])
     
     persist_dir = "NACE_embedding"
     # if not os.path.exists(persist_dir):
@@ -309,23 +306,24 @@ def get_assistant_response(user_input=""):
 # Replicate Credentials
 with st.sidebar:
     st.title(":office: Company Search Bot")
+    st.subheader("Ik kan je helpen bij het vinden van bedrijven in verschillende sectoren en locaties.")
     if 'OPENAI_KEY' in st.secrets:
-        st.success('API key already provided!', icon='✅')
+        st.success('API-sleutel al verstrekt!', icon='✅')
         api_key = st.secrets['OPENAI_KEY']
     else:
-        api_key = st.text_input('Enter API token:', type='password')
+        api_key = st.text_input('Voer je OpenAI API-token in:', type='password')
         if not (api_key.startswith('sk-') and len(api_key)==51):
-            st.warning('Please enter your credentials!', icon='⚠️')
+            st.warning('Voer je OpenAI API-token in!', icon='⚠️')
         else:
-            st.success('Proceed to entering your prompt message!', icon='👉')
+            st.success('Ga verder met het invoeren van je prompt!', icon='👉')
     os.environ['OPENAI_KEY'] = api_key
 
-    st.subheader('Models and information')
-    selected_model = st.sidebar.selectbox('Choose an OpenAI model', ['gpt-3.5-turbo-1106', 'gpt-4-1106-preview'], key='selected_model')
+    st.subheader('Models en informatie')
+    selected_model = st.sidebar.selectbox('Kies een OpenAI-model', ['gpt-3.5-turbo-1106', 'gpt-4-1106-preview'], key='selected_model')
     client, assistant, assistant_thread = load_openai_client_and_assistant(selected_model)
 
     
-    st.markdown('📖 Want more info about this chatbot? Contact info@werecircle.be')
+    st.markdown('📖 Wil je meer informatie over deze chatbot? Neem contact op met info@werecircle.be')
 
     image_urls = [
         'images/werecircle-logo.png',
