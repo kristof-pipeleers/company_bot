@@ -18,8 +18,6 @@ import sys
 sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
 
 organization_id = st.secrets["OPENAI_ORG_ID"]
-assistant_id_3_5 = st.secrets["OPENAI_ASSISTANT_ID_3_5"]
-assistant_id_4 = st.secrets["OPENAI_ASSISTANT_ID_4"]
 openai_key = st.secrets["OPENAI_KEY"]
 google_key = st.secrets["GOOGLE_API_KEY"]
 
