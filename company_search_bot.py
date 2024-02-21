@@ -303,9 +303,6 @@ def get_assistant_response(user_input=""):
     response = wait_on_run(run, assistant_thread, message)
     return response
 
-# App title
-st.title(":office: Company Search Bot")
-
 # Replicate Credentials
 with st.sidebar:
     st.title(":office: Company Search Bot")
@@ -320,7 +317,7 @@ with st.sidebar:
             st.success('Proceed to entering your prompt message!', icon='👉')
     os.environ['OPENAI_KEY'] = api_key
 
-    st.subheader('Models and parameters')
+    st.subheader('Models and information')
     selected_model = st.sidebar.selectbox('Choose an OpenAI model', ['gpt-3.5-turbo-1106', 'gpt-4-1106-preview'], key='selected_model')
     if selected_model == 'gpt-3.5-turbo-1106':
         client, assistant, assistant_thread = load_openai_client_and_assistant(assistant_id_3_5)
@@ -336,7 +333,6 @@ with st.sidebar:
 
     cols = st.sidebar.columns(len(image_urls))
     for col, url in zip(cols, image_urls):
-        # Now images will be centered and scaled to fit the column width
         col.image(url)
 
 # Store LLM generated responses
