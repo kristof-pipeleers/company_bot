@@ -13,9 +13,9 @@ from langchain.output_parsers import ResponseSchema
 from langchain.output_parsers import StructuredOutputParser
 from scrapers import KBO_scraper
 import numpy as np
-__import__('pysqlite3')
-import sys
-sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
+# __import__('pysqlite3')
+# import sys
+# sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
 
 organization_id = st.secrets["OPENAI_ORG_ID"]
 assistant_id_3_5 = st.secrets["OPENAI_ASSISTANT_ID_3_5"]
@@ -337,7 +337,7 @@ with st.sidebar:
 
 # Store LLM generated responses
 if "messages" not in st.session_state.keys():
-    st.session_state.messages = [{"role": "assistant", "content": "Hoe kan ik u vandaag van dienst zijn?"}]
+    st.session_state.messages = [{"role": "assistant", "content": "Hi! :wave: Hoe kan ik u vandaag van dienst zijn?"}]
 
 # Display or clear chat messages
 for message in st.session_state.messages:
