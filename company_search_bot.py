@@ -321,7 +321,7 @@ with st.sidebar:
     os.environ['OPENAI_KEY'] = api_key
 
     st.subheader('Models and parameters')
-    selected_model = st.sidebar.selectbox('Choose a OpenAI model', ['gpt-3.5-turbo-1106', 'gpt-4-1106-preview'], key='selected_model')
+    selected_model = st.sidebar.selectbox('Choose an OpenAI model', ['gpt-3.5-turbo-1106', 'gpt-4-1106-preview'], key='selected_model')
     if selected_model == 'gpt-3.5-turbo-1106':
         client, assistant, assistant_thread = load_openai_client_and_assistant(assistant_id_3_5)
     elif selected_model == 'gpt-4-1106-preview':
@@ -345,7 +345,7 @@ if "messages" not in st.session_state.keys():
 
 # Display or clear chat messages
 for message in st.session_state.messages:
-    with st.chat_message(message["role"], avatar="🍃"):
+    with st.chat_message(message["role"]):
         st.write(message["content"])
 
 def clear_chat_history():
