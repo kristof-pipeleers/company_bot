@@ -5,12 +5,10 @@ from jinja2 import Environment, FileSystemLoader
 import streamlit as st
 import time
 import json
-from streamlit.components.v1 import html
 from langchain.chains import RetrievalQA
 from langchain_community.document_loaders.csv_loader import CSVLoader
 from langchain_community.vectorstores import Chroma
 from langchain_openai import OpenAIEmbeddings
-from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.output_parsers import ResponseSchema
 from langchain.output_parsers import StructuredOutputParser
 from scrapers import KBO_scraper
@@ -20,7 +18,8 @@ import sys
 sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
 
 organization_id = st.secrets["OPENAI_ORG_ID"]
-assistant_id = st.secrets["OPENAI_ASSISTANT_ID"]
+assistant_id_3_5 = st.secrets["OPENAI_ASSISTANT_ID_3_5"]
+assistant_id_4 = st.secrets["OPENAI_ASSISTANT_ID_4"]
 openai_key = st.secrets["OPENAI_KEY"]
 google_key = st.secrets["GOOGLE_API_KEY"]
 
@@ -29,8 +28,6 @@ client = OpenAI(api_key=openai_key, organization=organization_id)
 file_loader = FileSystemLoader('.')
 env = Environment(loader=file_loader)
 template = env.get_template('system_message.jinja2')
-
-# Render the template with your actual values
 system_message = template.render()
 
 function_get_companies = {
@@ -55,27 +52,24 @@ function_get_companies = {
         }
     }
 
-# Define the HTML and CSS for the custom notification
 def custom_notification(status_message):
     if status_message:
         notification_html = f"""
         <style>
         @keyframes spin {{
-          0% {{ transform: rotate(0deg); }}
-          100% {{ transform: rotate(-360deg); }}
+          0% {{ transform: rotate(360deg); }}
+          100% {{ transform: rotate(0deg); }}
         }}
         .loading-icon {{
           display: inline-block;
           animation: spin 1s linear infinite;
         }}
         .notification-box {{
-          padding: 10px;
-          margin: 10px 0;
-          border-radius: 5px;
-          background-color: #f3f4f6;
+          padding: 0px;
+          margin: 0px 20px 0px 10px;
           color: #111827;
           display: flex;
-          align-items: center;
+          align-items: top;
         }}
         .notification-text {{
           margin-left: 10px;
@@ -91,17 +85,18 @@ def custom_notification(status_message):
     else:  # If the status message is empty, clear the notification
         status_placeholder.empty()
 
-
 # Set openAi client , assistant ai and assistant ai thread
 @st.cache_resource
-def load_openai_client_and_assistant():
+def load_openai_client_and_assistant(assistant_id):
     client          = OpenAI(api_key=openai_key)
     my_assistant    = client.beta.assistants.retrieve(assistant_id)
     thread          = client.beta.threads.create()
 
-    return client , my_assistant, thread
+    return client, my_assistant, thread
 
-client, assistant, assistant_thread = load_openai_client_and_assistant()
+client = None
+assistant = None
+assistant_thread = None
 
 def get_companies(location, industry):
     
@@ -233,7 +228,7 @@ def get_google_maps_companies(location, industry):
         return response.text
 
 # check in loop  if assistant ai parse our request
-def wait_on_run(run, thread, message, status_placeholder):
+def wait_on_run(run, thread, message):
 
     while run.status == "queued" or run.status == "in_progress" or run.status == "requires_action":
 
@@ -245,9 +240,6 @@ def wait_on_run(run, thread, message, status_placeholder):
         time.sleep(0.5)   
     
         if run.status == "completed":
-
-            # Once the process is complete, clear the notification
-            custom_notification("")
 
             # Retrieve all the messages added after our last user message
             messages = client.beta.threads.messages.list(
@@ -287,8 +279,7 @@ def wait_on_run(run, thread, message, status_placeholder):
             )
             
             custom_notification(f"OpenAI Status: {run.status}")
-            # Once the function call is completed, clear the notification
-            custom_notification("")
+
             return response
         
         else:
@@ -309,31 +300,76 @@ def get_assistant_response(user_input=""):
         assistant_id=assistant.id,
     )
 
-    response = wait_on_run(run, assistant_thread, message, status_placeholder)
+    response = wait_on_run(run, assistant_thread, message)
     return response
 
-if 'user_input' not in st.session_state:
-    st.session_state.user_input = ''
-
-def submit():
-    st.session_state.user_input = st.session_state.query
-    st.session_state.query = ''
-
-
-# streamlit UI
+# App title
 st.title(":office: Company Search Bot")
 
-st.subheader("Hi! :wave:")
-st.text("Ik ben een chatbot die ontworpen is je te helpen bij het vinden van bedrijven in verschillende sectoren en locaties.")
-st.text_input("Hoe kan ik je van dienst zijn vandaag?", key='query', on_change=submit)
+# Replicate Credentials
+with st.sidebar:
+    st.title(":office: Company Search Bot")
+    if 'OPENAI_KEY' in st.secrets:
+        st.success('API key already provided!', icon='✅')
+        api_key = st.secrets['OPENAI_KEY']
+    else:
+        api_key = st.text_input('Enter API token:', type='password')
+        if not (api_key.startswith('sk-') and len(api_key)==51):
+            st.warning('Please enter your credentials!', icon='⚠️')
+        else:
+            st.success('Proceed to entering your prompt message!', icon='👉')
+    os.environ['OPENAI_KEY'] = api_key
 
-user_input = st.session_state.user_input
+    st.subheader('Models and parameters')
+    selected_model = st.sidebar.selectbox('Choose a OpenAI model', ['gpt-3.5-turbo-1106', 'gpt-4-1106-preview'], key='selected_model')
+    if selected_model == 'gpt-3.5-turbo-1106':
+        client, assistant, assistant_thread = load_openai_client_and_assistant(assistant_id_3_5)
+    elif selected_model == 'gpt-4-1106-preview':
+        client, assistant, assistant_thread = load_openai_client_and_assistant(assistant_id_4)
+    
+    st.markdown('📖 Want more info about this chatbot? Conact info@werecircle.be')
 
-st.write("You entered: ", user_input)
+    image_urls = [
+        'images/werecircle-logo.png',
+        'images/greenaumatic-logo.png'
+    ]
 
-status_placeholder = st.empty()
+    cols = st.sidebar.columns(len(image_urls))
+    for col, url in zip(cols, image_urls):
+        # Now images will be centered and scaled to fit the column width
+        col.image(url)
 
-if user_input:
-    result = get_assistant_response(user_input)
-    st.header('Assistant', divider='rainbow')
-    st.text(result)
+# Store LLM generated responses
+if "messages" not in st.session_state.keys():
+    st.session_state.messages = [{"role": "assistant", "content": "How may I assist you today?"}]
+
+# Display or clear chat messages
+for message in st.session_state.messages:
+    with st.chat_message(message["role"], avatar="🍃"):
+        st.write(message["content"])
+
+def clear_chat_history():
+    st.session_state.messages = [{"role": "assistant", "content": "How may I assist you today?"}]
+st.sidebar.button('Clear Chat History', on_click=clear_chat_history)
+
+# User-provided prompt
+if query := st.chat_input(disabled=not api_key):
+    st.session_state.messages.append({"role": "user", "content": query})
+    with st.chat_message("user", avatar="👤"):
+        st.write(query)
+
+# Generate a new response if last message is not from assistant
+if st.session_state.messages[-1]["role"] != "assistant":
+    with st.chat_message("assistant", avatar="🍃"):
+        status_placeholder = st.empty()
+        response = get_assistant_response(user_input=query)
+        custom_notification("")
+        placeholder = st.empty()
+        full_response = ''
+        for item in response:
+            full_response += item
+            placeholder.markdown(full_response)
+        placeholder.markdown(full_response)
+    message = {"role": "assistant", "content": full_response}
+    st.session_state.messages.append(message)
+
