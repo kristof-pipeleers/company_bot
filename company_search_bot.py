@@ -291,19 +291,18 @@ def wait_on_run(run, thread, message):
 # initiate assistant ai response
 def get_assistant_response(user_input=""):
 
-    try:
-        message = client.beta.threads.messages.create(
-            thread_id=assistant_thread.id,
-            role="user",
-            content=user_input,
-        )
-        run = client.beta.threads.runs.create(
-            thread_id=assistant_thread.id,
-            assistant_id=assistant.id,
-        )
-        
-        response = wait_on_run(run, assistant_thread, message)
-        return response
+    message = client.beta.threads.messages.create(
+        thread_id=assistant_thread.id,
+        role="user",
+        content=user_input,
+    )
+    run = client.beta.threads.runs.create(
+        thread_id=assistant_thread.id,
+        assistant_id=assistant.id,
+    )
+    
+    response = wait_on_run(run, assistant_thread, message)
+    return response
 
     
 
