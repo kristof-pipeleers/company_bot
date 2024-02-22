@@ -92,8 +92,9 @@ def scrape_data(nace_code, location, temp_pdf_filename, option, driver):
 
     except TimeoutException:
         print(f"No results found for location: {location} or NACE-code: {nace_code} is incorrect.")
-        driver.close()
+        driver.quit()
         print("driver is closed")
+        return None
 
 def extract_ondernemingsnummers(driver):
     try: 
@@ -186,6 +187,7 @@ def main(locations, nace_codes):
         return all_company_data
     except Exception as e:
         print(f"Critical error, stopping the scraper: {e}")
+        driver.close()
     finally:
         # driver.quit()
         driver.close()
