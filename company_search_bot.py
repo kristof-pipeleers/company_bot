@@ -84,19 +84,16 @@ def custom_notification(status_message):
 @st.cache_resource
 def load_openai_client_and_assistant(llm):
     
-    try:
-        client          = OpenAI(api_key=os.environ['OPENAI_KEY'])
-        my_assistant = client.beta.assistants.create(
-                instructions=system_message,
-                model=llm,
-                tools=[{"type": "function", "function": function_get_companies}],
-                name=f"Company Search Bot"
-            )
-        thread          = client.beta.threads.create()
+    client          = OpenAI(api_key=os.environ['OPENAI_KEY'])
+    my_assistant = client.beta.assistants.create(
+            instructions=system_message,
+            model=llm,
+            tools=[{"type": "function", "function": function_get_companies}],
+            name=f"Company Search Bot"
+        )
+    thread          = client.beta.threads.create()
 
-        return client, my_assistant, thread
-    except Exception as e:
-        print("Unable to initialize OpenAI assistant")
+    return client, my_assistant, thread
 
 client = None
 assistant = None
