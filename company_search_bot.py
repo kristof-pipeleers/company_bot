@@ -13,9 +13,9 @@ from langchain.output_parsers import ResponseSchema
 from langchain.output_parsers import StructuredOutputParser
 from scrapers import KBO_scraper
 import numpy as np
-__import__('pysqlite3')
-import sys
-sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
+# __import__('pysqlite3')
+# import sys
+# sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
 
 organization_id = st.secrets["OPENAI_ORG_ID"]
 google_key = st.secrets["GOOGLE_API_KEY"]
@@ -251,26 +251,19 @@ def wait_on_run(run, thread, message):
             return response
 
         elif run.status == "requires_action":
-            try: 
-                required_actions = run.required_action.submit_tool_outputs.model_dump()
-                tool_outputs = []
-                for action in required_actions["tool_calls"]:
-                    func_name = action["function"]["name"]
-                    arguments = json.loads(action["function"]["arguments"])
-                    if func_name == "get_companies":
-                        response = get_companies(arguments["location"], arguments["industry"])
-                        tool_outputs.append({
-                            "tool_call_id": action["id"],
-                            "output": response
-                        })
-                    else:
-                        print("function not found")
-            except Exception as e:
-                client.beta.threads.runs.cancel(run_id=run.id, thread_id=assistant_thread.id)
-                print("run is cancelled")
-                print(e)
-                error_message = "⚠️ Er is iets misgegaan bij het openen van de juiste gegevensbronnen voor uw bedrijfszoekopdracht  ⚠️ \n Zorg ervoor dat u een bestaande bedrijfstak en locatie invoert. 🔍"
-                return error_message   
+            required_actions = run.required_action.submit_tool_outputs.model_dump()
+            tool_outputs = []
+            for action in required_actions["tool_calls"]:
+                func_name = action["function"]["name"]
+                arguments = json.loads(action["function"]["arguments"])
+                if func_name == "get_companies":
+                    response = get_companies(arguments["location"], arguments["industry"])
+                    tool_outputs.append({
+                        "tool_call_id": action["id"],
+                        "output": response
+                    })
+                else:
+                    print("function not found")   
 
             print("Submitting outputs back to the Assistant...")
             
