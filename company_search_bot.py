@@ -13,9 +13,9 @@ from langchain.output_parsers import ResponseSchema
 from langchain.output_parsers import StructuredOutputParser
 from scrapers import KBO_scraper
 import numpy as np
-# __import__('pysqlite3')
-# import sys
-# sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
+__import__('pysqlite3')
+import sys
+sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
 
 organization_id = st.secrets["OPENAI_ORG_ID"]
 google_key = st.secrets["GOOGLE_API_KEY"]
