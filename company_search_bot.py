@@ -304,9 +304,7 @@ def get_assistant_response(user_input=""):
         
         response = wait_on_run(run, assistant_thread, message)
         return response
-    except Exception as e:
-        error_message = "⚠️ U voert al een Company Search Bot uit  ⚠️ \n Let the previous chat finish or use another API token 🔑"
-        return error_message
+
     
 
 # Replicate Credentials
