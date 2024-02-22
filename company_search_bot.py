@@ -83,16 +83,20 @@ def custom_notification(status_message):
 # Set openAi client , assistant ai and assistant ai thread
 @st.cache_resource
 def load_openai_client_and_assistant(llm):
-    client          = OpenAI(api_key=os.environ['OPENAI_KEY'])
-    my_assistant = client.beta.assistants.create(
-            instructions=system_message,
-            model=llm,
-            tools=[{"type": "function", "function": function_get_companies}],
-            name=f"Company Search Bot"
-        )
-    thread          = client.beta.threads.create()
+    
+    try:
+        client          = OpenAI(api_key=os.environ['OPENAI_KEY'])
+        my_assistant = client.beta.assistants.create(
+                instructions=system_message,
+                model=llm,
+                tools=[{"type": "function", "function": function_get_companies}],
+                name=f"Company Search Bot"
+            )
+        thread          = client.beta.threads.create()
 
-    return client, my_assistant, thread
+        return client, my_assistant, thread
+    except Exception as e:
+        print("Unable to initialize OpenAI assistant")
 
 client = None
 assistant = None
@@ -250,19 +254,25 @@ def wait_on_run(run, thread, message):
             return response
 
         elif run.status == "requires_action":
-            required_actions = run.required_action.submit_tool_outputs.model_dump()
-            tool_outputs = []
-            for action in required_actions["tool_calls"]:
-                func_name = action["function"]["name"]
-                arguments = json.loads(action["function"]["arguments"])
-                if func_name == "get_companies":
-                    response = get_companies(arguments["location"], arguments["industry"])
-                    tool_outputs.append({
-                        "tool_call_id": action["id"],
-                        "output": response
-                    })
-                else:
-                    print("function not found")
+            try: 
+                required_actions = run.required_action.submit_tool_outputs.model_dump()
+                tool_outputs = []
+                for action in required_actions["tool_calls"]:
+                    func_name = action["function"]["name"]
+                    arguments = json.loads(action["function"]["arguments"])
+                    if func_name == "get_companies":
+                        response = get_companies(arguments["location"], arguments["industry"])
+                        tool_outputs.append({
+                            "tool_call_id": action["id"],
+                            "output": response
+                        })
+                    else:
+                        print("function not found")
+            except Exception as e:
+                client.beta.threads.runs.cancel(run_id=run.id, thread_id=assistant_thread.id)
+                print("run is cancelled")
+                error_message = "⚠️ Er is iets misgegaan bij het openen van de juiste gegevensbronnen voor uw bedrijfszoekopdracht  ⚠️ \n Zorg ervoor dat u een bestaande bedrijfstak en locatie invoert. 🔍"
+                return error_message   
 
             print("Submitting outputs back to the Assistant...")
             
@@ -290,18 +300,23 @@ def wait_on_run(run, thread, message):
 # initiate assistant ai response
 def get_assistant_response(user_input=""):
 
-    message = client.beta.threads.messages.create(
-        thread_id=assistant_thread.id,
-        role="user",
-        content=user_input,
-    )
-    run = client.beta.threads.runs.create(
-        thread_id=assistant_thread.id,
-        assistant_id=assistant.id,
-    )
-
-    response = wait_on_run(run, assistant_thread, message)
-    return response
+    try:
+        message = client.beta.threads.messages.create(
+            thread_id=assistant_thread.id,
+            role="user",
+            content=user_input,
+        )
+        run = client.beta.threads.runs.create(
+            thread_id=assistant_thread.id,
+            assistant_id=assistant.id,
+        )
+        
+        response = wait_on_run(run, assistant_thread, message)
+        return response
+    except Exception as e:
+        error_message = "⚠️ U voert al een Company Search Bot uit  ⚠️ \n Let the previous chat finish or use another API token 🔑"
+        return error_message
+    
 
 # Replicate Credentials
 with st.sidebar:
@@ -317,11 +332,11 @@ with st.sidebar:
         else:
             st.success('Ga verder met het invoeren van je prompt!', icon='👉')
     os.environ['OPENAI_KEY'] = api_key
+    print(os.environ['OPENAI_KEY'])
 
     st.subheader('Models en informatie')
     selected_model = st.sidebar.selectbox('Kies een OpenAI-model', ['gpt-3.5-turbo-1106', 'gpt-4-1106-preview'], key='selected_model')
     client, assistant, assistant_thread = load_openai_client_and_assistant(selected_model)
-
     
     st.markdown('📖 Wil je meer informatie over deze chatbot? Neem contact op met info@werecircle.be')
 
