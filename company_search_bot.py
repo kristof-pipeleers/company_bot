@@ -268,6 +268,7 @@ def wait_on_run(run, thread, message):
             except Exception as e:
                 client.beta.threads.runs.cancel(run_id=run.id, thread_id=assistant_thread.id)
                 print("run is cancelled")
+                print(e)
                 error_message = "⚠️ Er is iets misgegaan bij het openen van de juiste gegevensbronnen voor uw bedrijfszoekopdracht  ⚠️ \n Zorg ervoor dat u een bestaande bedrijfstak en locatie invoert. 🔍"
                 return error_message   
 
@@ -329,7 +330,6 @@ with st.sidebar:
         else:
             st.success('Ga verder met het invoeren van je prompt!', icon='👉')
     os.environ['OPENAI_KEY'] = api_key
-    print(os.environ['OPENAI_KEY'])
 
     st.subheader('Models en informatie')
     selected_model = st.sidebar.selectbox('Kies een OpenAI-model', ['gpt-3.5-turbo-1106', 'gpt-4-1106-preview'], key='selected_model')
