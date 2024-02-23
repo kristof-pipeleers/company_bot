@@ -270,6 +270,7 @@ def wait_on_run(run, thread, message):
                 print("run is cancelled")
                 print(e)
                 error_message = "⚠️ Er is iets misgegaan bij het openen van de juiste gegevensbronnen voor uw bedrijfszoekopdracht  ⚠️ \n Zorg ervoor dat u een bestaande bedrijfstak en locatie invoert. 🔍"
+                error_message = e
                 return error_message   
 
             print("Submitting outputs back to the Assistant...")
