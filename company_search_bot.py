@@ -13,9 +13,9 @@ from langchain.output_parsers import ResponseSchema
 from langchain.output_parsers import StructuredOutputParser
 from scrapers import KBO_scraper
 import numpy as np
-__import__('pysqlite3')
-import sys
-sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
+# __import__('pysqlite3')
+# import sys
+# sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
 
 organization_id = st.secrets["OPENAI_ORG_ID"]
 google_key = st.secrets["GOOGLE_API_KEY"]
@@ -25,7 +25,8 @@ env = Environment(loader=file_loader)
 template = env.get_template('system_message.jinja2')
 system_message = template.render()
 
-function_get_companies = {
+function_get_companies = [
+    {
         "name": "get_companies",
         "description": "retrieves the location and industry of the user question",
         "parameters": {
@@ -46,6 +47,7 @@ function_get_companies = {
             ]
         }
     }
+]
 
 def custom_notification(status_message):
     if status_message:
@@ -82,23 +84,6 @@ def custom_notification(status_message):
 
 # Set openAi client , assistant ai and assistant ai thread
 @st.cache_resource
-def load_openai_client_and_assistant(llm):
-    
-    client          = OpenAI(api_key=os.environ['OPENAI_KEY'])
-    my_assistant = client.beta.assistants.create(
-            instructions=system_message,
-            model=llm,
-            tools=[{"type": "function", "function": function_get_companies}],
-            name=f"Company Search Bot"
-        )
-    thread          = client.beta.threads.create()
-
-    return client, my_assistant, thread
-
-client = None
-assistant = None
-assistant_thread = None
-
 def get_companies(location, industry):
     
     kbo_data_array = get_KBO_companies(location, industry)
@@ -149,7 +134,9 @@ def get_relevant_NACE(industry, num):
 
     from langchain_openai import OpenAI
 
-    custom_notification(f"Retrieving relevant NACE codes for your question ...")
+    custom_notification(f"Retrieving relevant NACE codes for industry: {industry} ...")
+
+    print("**************")
    
     client = OpenAI(api_key=os.environ['OPENAI_KEY'], organization=organization_id)
     
@@ -226,84 +213,43 @@ def get_google_maps_companies(location, industry):
         return company_data_array
     else:
         print("Request failed with status code:", response.status_code)
-        return response.text
-
-# check in loop  if assistant ai parse our request
-def wait_on_run(run, thread, message):
-
-    while run.status == "queued" or run.status == "in_progress" or run.status == "requires_action":
-
-        run = client.beta.threads.runs.retrieve(
-            thread_id=thread.id,
-            run_id=run.id,
-        )
-        custom_notification(f"OpenAI status: {run.status}")
-        time.sleep(0.5)   
-    
-        if run.status == "completed":
-
-            # Retrieve all the messages added after our last user message
-            messages = client.beta.threads.messages.list(
-                thread_id=assistant_thread.id, order="asc", after=message.id
-            )
-
-            response = messages.data[0].content[0].text.value
-            return response
-
-        elif run.status == "requires_action":
-            required_actions = run.required_action.submit_tool_outputs.model_dump()
-            tool_outputs = []
-            for action in required_actions["tool_calls"]:
-                func_name = action["function"]["name"]
-                arguments = json.loads(action["function"]["arguments"])
-                if func_name == "get_companies":
-                    response = get_companies(arguments["location"], arguments["industry"])
-                    tool_outputs.append({
-                        "tool_call_id": action["id"],
-                        "output": response
-                    })
-                else:
-                    print("function not found")
-
-            print("Submitting outputs back to the Assistant...")
-            
-            # Send the function call response back to the LLM?
-            # client.beta.threads.runs.submit_tool_outputs(
-            #     thread_id=thread.id,
-            #     run_id=run.id,
-            #     tool_outputs=tool_outputs
-            # )           
-
-            client.beta.threads.runs.cancel(
-                run_id=run.id, 
-                thread_id=thread.id
-            )
-            
-            custom_notification(f"OpenAI Status: {run.status}")
-
-            return response
-        
-        else:
-            print("Waiting for the Assistant to process...")
-            time.sleep(2)
-    
+        return response.text    
 
 # initiate assistant ai response
-def get_assistant_response(user_input=""):
+def get_chat_response(user_input=""):
+    
+    dialogue = []
+    dialogue.append({"role": "system", "content": system_message})
+    for dict_message in st.session_state.messages:
+        dialogue.append({
+            "role": dict_message["role"], 
+            "content": dict_message["content"]
+        })
+    print(dialogue)
+    
+    response = client.chat.completions.create(
+        model=selected_model,
+        messages=dialogue,
+        functions=function_get_companies,
+        function_call="auto", 
+        temperature=0.9
+    )
+    response_message = response.choices[0].message
+    print(f"message: {response_message}")
 
-    message = client.beta.threads.messages.create(
-        thread_id=assistant_thread.id,
-        role="user",
-        content=user_input,
-    )
-    run = client.beta.threads.runs.create(
-        thread_id=assistant_thread.id,
-        assistant_id=assistant.id,
-    )
-    
-    response = wait_on_run(run, assistant_thread, message)
-    return response
-    
+    if response_message.function_call:
+        custom_notification("Recommended Function call...")
+        print(f"function call: {response_message.function_call}")
+        function_name = response_message.function_call.name
+        if function_name == "get_companies":
+            function_args = json.loads(response_message.function_call.arguments)
+            response = get_companies(**function_args)
+            return response
+        else: 
+            print(f"Function " + function_name + " does not exist")
+
+    return response_message.content
+
 
 # Replicate Credentials
 with st.sidebar:
@@ -320,10 +266,10 @@ with st.sidebar:
             st.success('Ga verder met het invoeren van je prompt!', icon='👉')
     os.environ['OPENAI_KEY'] = api_key
 
-    st.subheader('Models en informatie')
+    st.subheader('Mosdels en informatie')
     selected_model = st.sidebar.selectbox('Kies een OpenAI-model', ['gpt-3.5-turbo-1106', 'gpt-4-1106-preview'], key='selected_model')
-    client, assistant, assistant_thread = load_openai_client_and_assistant(selected_model)
-    
+    client = OpenAI(api_key=os.environ['OPENAI_KEY'])
+
     st.markdown('📖 Wil je meer informatie over deze chatbot? Neem contact op met info@werecircle.be')
 
     image_urls = [
@@ -362,7 +308,7 @@ if query := st.chat_input(disabled=not api_key):
 if st.session_state.messages[-1]["role"] != "assistant":
     with st.chat_message("assistant", avatar="🍃"):
         status_placeholder = st.empty()
-        response = get_assistant_response(user_input=query)
+        response = get_chat_response(user_input=query)
         custom_notification("")
         placeholder = st.empty()
         full_response = ''
