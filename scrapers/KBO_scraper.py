@@ -92,7 +92,7 @@ def scrape_data(nace_code, location, temp_pdf_filename, option, driver):
 
     except TimeoutException:
         print(f"No results found for location: {location} or NACE-code: {nace_code} is incorrect.")
-        driver.quit()
+        driver.close()
         print("driver is closed")
         return None
 
