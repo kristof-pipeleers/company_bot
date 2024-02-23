@@ -13,9 +13,9 @@ from langchain.output_parsers import ResponseSchema
 from langchain.output_parsers import StructuredOutputParser
 from scrapers import KBO_scraper
 import numpy as np
-__import__('pysqlite3')
-import sys
-sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
+# __import__('pysqlite3')
+# import sys
+# sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
 
 organization_id = st.secrets["OPENAI_ORG_ID"]
 google_key = st.secrets["GOOGLE_API_KEY"]
@@ -268,6 +268,7 @@ def wait_on_run(run, thread, message):
             except Exception as e:
                 client.beta.threads.runs.cancel(run_id=run.id, thread_id=assistant_thread.id)
                 print("run is cancelled")
+                print(e)
                 error_message = "⚠️ Er is iets misgegaan bij het openen van de juiste gegevensbronnen voor uw bedrijfszoekopdracht  ⚠️ \n Zorg ervoor dat u een bestaande bedrijfstak en locatie invoert. 🔍"
                 return error_message   
 
@@ -311,7 +312,8 @@ def get_assistant_response(user_input=""):
         response = wait_on_run(run, assistant_thread, message)
         return response
     except Exception as e:
-        error_message = "⚠️ U voert al een Company Search Bot uit  ⚠️ \n Let the previous chat finish or use another API token 🔑"
+        print(e)
+        error_message = "⚠️ U voert al een Company Search Bot uit  ⚠️ \n Laat de vorige chat eindigen of gebruik een ander API-token 🔑"
         return error_message
     
 
