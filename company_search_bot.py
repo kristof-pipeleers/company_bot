@@ -83,7 +83,6 @@ def custom_notification(status_message):
         status_placeholder.empty()
 
 # Set openAi client , assistant ai and assistant ai thread
-@st.cache_resource
 def get_companies(location, industry):
     
     kbo_data_array = get_KBO_companies(location, industry)
@@ -124,7 +123,6 @@ def get_KBO_companies(location, industry):
     kbo_data_array = KBO_scraper.main([location], nace_codes)
     return kbo_data_array
     
-@st.cache_data
 def load_data(file_path):
     loader = CSVLoader(file_path=file_path)
     data = loader.load()
