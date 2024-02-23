@@ -251,27 +251,19 @@ def wait_on_run(run, thread, message):
             return response
 
         elif run.status == "requires_action":
-            try: 
-                required_actions = run.required_action.submit_tool_outputs.model_dump()
-                tool_outputs = []
-                for action in required_actions["tool_calls"]:
-                    func_name = action["function"]["name"]
-                    arguments = json.loads(action["function"]["arguments"])
-                    if func_name == "get_companies":
-                        response = get_companies(arguments["location"], arguments["industry"])
-                        tool_outputs.append({
-                            "tool_call_id": action["id"],
-                            "output": response
-                        })
-                    else:
-                        print("function not found")
-            except Exception as e:
-                client.beta.threads.runs.cancel(run_id=run.id, thread_id=assistant_thread.id)
-                print("run is cancelled")
-                print(e)
-                error_message = "⚠️ Er is iets misgegaan bij het openen van de juiste gegevensbronnen voor uw bedrijfszoekopdracht  ⚠️ \n Zorg ervoor dat u een bestaande bedrijfstak en locatie invoert. 🔍"
-                error_message = e
-                return error_message   
+            required_actions = run.required_action.submit_tool_outputs.model_dump()
+            tool_outputs = []
+            for action in required_actions["tool_calls"]:
+                func_name = action["function"]["name"]
+                arguments = json.loads(action["function"]["arguments"])
+                if func_name == "get_companies":
+                    response = get_companies(arguments["location"], arguments["industry"])
+                    tool_outputs.append({
+                        "tool_call_id": action["id"],
+                        "output": response
+                    })
+                else:
+                    print("function not found")
 
             print("Submitting outputs back to the Assistant...")
             
@@ -299,23 +291,18 @@ def wait_on_run(run, thread, message):
 # initiate assistant ai response
 def get_assistant_response(user_input=""):
 
-    try:
-        message = client.beta.threads.messages.create(
-            thread_id=assistant_thread.id,
-            role="user",
-            content=user_input,
-        )
-        run = client.beta.threads.runs.create(
-            thread_id=assistant_thread.id,
-            assistant_id=assistant.id,
-        )
-        
-        response = wait_on_run(run, assistant_thread, message)
-        return response
-    except Exception as e:
-        print(e)
-        error_message = "⚠️ U voert al een Company Search Bot uit  ⚠️ \n Laat de vorige chat eindigen of gebruik een ander API-token 🔑"
-        return error_message
+    message = client.beta.threads.messages.create(
+        thread_id=assistant_thread.id,
+        role="user",
+        content=user_input,
+    )
+    run = client.beta.threads.runs.create(
+        thread_id=assistant_thread.id,
+        assistant_id=assistant.id,
+    )
+    
+    response = wait_on_run(run, assistant_thread, message)
+    return response
     
 
 # Replicate Credentials
