@@ -135,8 +135,6 @@ def get_relevant_NACE(industry, num):
     from langchain_openai import OpenAI
 
     custom_notification(f"Retrieving relevant NACE codes for industry: {industry} ...")
-
-    print("**************")
    
     client = OpenAI(api_key=os.environ['OPENAI_KEY'], organization=organization_id)
     
