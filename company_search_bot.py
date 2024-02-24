@@ -33,16 +33,26 @@ function_get_companies = [
             "type": "object",
             "properties": {
                 "location": {
-                    "type": "string",
-                    "description": "This is the location name or ZIP code where the user wishes to search for businesses."
+                    "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "minItems": 1,
+                        "maxItems": 5,
+                        "description": "If the user specifies a broader region than a city, lists the 5 largest cities in that region",
+                },
+                "area": {
+                    "type": "boolean",
+                    "description": "This refers to the size of the location area. If the user literally states to search in a city without the adjacent areas, this parameter is false. If the user also explicitly asks for the city and the surrounding area, this parameter is true."
                 },
                 "industry": {
                     "type": "string",
-                    "description": "This refers to the sector in which the user intends to find businesses."
+                    "description": "This refers to the sector in which the user intends to find businesses. This should be a detailed description of the sector and not a single word."
                 }
             },
             "required": [
                 "location",
+                "area",
                 "industry"
             ]
         }
@@ -83,9 +93,9 @@ def custom_notification(status_message):
         status_placeholder.empty()
 
 # Set openAi client , assistant ai and assistant ai thread
-def get_companies(location, industry):
+def get_companies(user_input, location, area, industry):
     
-    kbo_data_array = get_KBO_companies(location, industry)
+    kbo_data_array = get_KBO_companies(user_input, location, area, industry)
     print(f'kbo: {kbo_data_array}')
     maps_data_array = get_google_maps_companies(location, industry)
     print(f'maps: {maps_data_array}')
@@ -94,9 +104,11 @@ def get_companies(location, industry):
     kbo_data_array = np.array(kbo_data_array) if isinstance(kbo_data_array, list) else kbo_data_array
     maps_data_array = np.array(maps_data_array) if isinstance(maps_data_array, list) else maps_data_array
 
+    result = ''
     # Check if either array is empty
     if kbo_data_array.size == 0:
         company_data = maps_data_array
+        result = '⚠️ Geen resultaten gevonden in de KBO databank ⚠️ Zorg ervoor dat u een duidelijke omschrijving geeft van de gewenste branche en locatie. 🔍 <br><br>'
     elif maps_data_array.size == 0:
         company_data = kbo_data_array
     else:
@@ -110,17 +122,17 @@ def get_companies(location, industry):
     else:
         # Return an empty numpy array if both input arrays were empty
         unique_array = np.array([])
-    result = '\n'.join([f"{item[0]} - {item[1]}" for item in unique_array])
+    result += '<br>'.join([f"{item[0]} - {item[1]}" for item in unique_array])
     return result  
     
-def get_KBO_companies(location, industry):
+def get_KBO_companies(user_input, location, area, industry):
     
-    nace_dict = get_relevant_NACE(industry, 5)
+    nace_dict = get_relevant_NACE(user_input, industry, 10)
     nace_codes = nace_dict['nace_codes']
     custom_notification(f"Relevant NACE codes found: {nace_codes}")
 
     custom_notification(f"Retrieving company information from KBO database ... (this may take a few minutes)")
-    kbo_data_array = KBO_scraper.main([location], nace_codes)
+    kbo_data_array = KBO_scraper.main([location], area, nace_codes)
     return kbo_data_array
     
 def load_data(file_path):
@@ -128,7 +140,7 @@ def load_data(file_path):
     data = loader.load()
     return data
 
-def get_relevant_NACE(industry, num):
+def get_relevant_NACE(user_input, industry, num):
 
     from langchain_openai import OpenAI
 
@@ -166,9 +178,10 @@ def get_relevant_NACE(industry, num):
     output_parser = StructuredOutputParser.from_response_schemas([nace_code_schema, description_schema])
     format_instructions = output_parser.get_format_instructions()
     
-    query = f"Geef de {num} meest relevante NACE codes voor de {industry} sector? Antwoord met een json-dict: {format_instructions}"
+    query = f"Geef de 5 meest relevante NACE codes voor de {user_input} sector op basis van de meegegeven informatie? Antwoord met een json-dict: {format_instructions}"
 
     result = qa({"query": query})
+    print(result)
     print(result['result'].strip())
     result_as_dict = output_parser.parse(result['result'].strip())
     return result_as_dict
@@ -221,7 +234,6 @@ def get_chat_response(user_input=""):
             "role": dict_message["role"], 
             "content": dict_message["content"]
         })
-    print(dialogue)
     
     response = client.chat.completions.create(
         model=selected_model,
@@ -233,17 +245,23 @@ def get_chat_response(user_input=""):
     response_message = response.choices[0].message
     print(f"message: {response_message}")
 
-    if response_message.function_call:
-        custom_notification("Recommended Function call...")
-        print(f"function call: {response_message.function_call}")
-        function_name = response_message.function_call.name
-        if function_name == "get_companies":
-            function_args = json.loads(response_message.function_call.arguments)
-            response = get_companies(**function_args)
-            return response
-        else: 
-            print(f"Function " + function_name + " does not exist")
+    try: 
 
+        if response_message.function_call:
+            custom_notification("Recommended Function call...")
+            print(f"function call: {response_message.function_call}")
+            function_name = response_message.function_call.name
+            if function_name == "get_companies":
+                function_args = json.loads(response_message.function_call.arguments)
+                response = get_companies(user_input, **function_args)
+                return response
+            else: 
+                print(f"Function " + function_name + " does not exist")
+    except Exception as e:
+        print(e)
+        response = "⚠️ Er is iets misgegaan bij het openen van de juiste gegevensbronnen voor uw bedrijfszoekopdracht  ⚠️ \n Zorg ervoor dat u een bestaande bedrijfstak en locatie invoert. 🔍"
+        return response
+    
     return response_message.content
 
 
@@ -282,6 +300,7 @@ if "messages" not in st.session_state.keys():
     st.session_state.messages = [{"role": "assistant", "content": "Hi! :wave: Hoe kan ik u vandaag van dienst zijn?"}]
 
 # Display or clear chat messages
+print(f"messages: {st.session_state.messages}")
 for message in st.session_state.messages:
     if message["role"] == "user":
         with st.chat_message(message["role"], avatar="👤"):
@@ -310,8 +329,8 @@ if st.session_state.messages[-1]["role"] != "assistant":
         full_response = ''
         for item in response:
             full_response += item
-            placeholder.markdown(full_response)
-        placeholder.markdown(full_response)
+            placeholder.markdown(full_response, unsafe_allow_html=True)
+        placeholder.markdown(full_response, unsafe_allow_html=True)
     message = {"role": "assistant", "content": full_response}
     st.session_state.messages.append(message)
 

@@ -2,7 +2,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
-import undetected_chromedriver as uc
+from selenium import webdriver
 import requests
 from typing import List
 import sys
@@ -59,10 +59,12 @@ def scrape_data(nace_code, location, temp_pdf_filename, option, driver):
 
         nace_input = driver.find_element(By.ID, 'nacecodes')
         
-        if option == 1:
+        if not option:
             municipality_selector = ('gem', 'gemeente1')
-        elif option == 2:
+            print('city only')
+        elif option:
             municipality_selector = ('gemb', 'gemeente0')
+            print('city en neighbours')
         elif option == 3:
             municipality_selector = ('post', 'postnummer1')
 
@@ -92,8 +94,6 @@ def scrape_data(nace_code, location, temp_pdf_filename, option, driver):
 
     except TimeoutException:
         print(f"No results found for location: {location} or NACE-code: {nace_code} is incorrect.")
-        driver.quit()
-        print("driver is closed")
         return None
 
 def extract_ondernemingsnummers(driver):
@@ -140,7 +140,7 @@ def check_activities(ondernemingsnummer, nace_code):
                     return [company_name, company_addr]
         return []            
 
-def kbo_scraper(locations: List[str], nace_codes: List[str], option: int, driver):
+def kbo_scraper(locations: List[str], nace_codes: List[str], option: bool, driver):
     start_url = "https://kbopub.economie.fgov.be/kbopub/zoekactiviteitform.html"
     all_company_data = []
     for location in locations:
@@ -168,7 +168,7 @@ def print_usage_and_exit():
     sys.exit(1)
 
 def setup_chrome_driver():
-    chrome_options = uc.ChromeOptions()
+    chrome_options = webdriver.ChromeOptions()
     chrome_options.add_argument("--headless")
     chrome_options.add_argument("--disable-extensions")
     chrome_options.add_argument("--disable-popup-blocking")
@@ -176,14 +176,14 @@ def setup_chrome_driver():
     chrome_options.add_argument("--disable-plugins-discovery")
     chrome_options.add_argument("--incognito")
     chrome_options.add_experimental_option("prefs", {"profile.managed_default_content_settings.images": 2,})
-    driver = uc.Chrome(options=chrome_options, version_main = 120)
+    driver = webdriver.Chrome(chrome_options)
     driver.delete_all_cookies()
     return driver
 
-def main(locations, nace_codes):
+def main(locations, option, nace_codes):
     driver = setup_chrome_driver() 
     try:
-        all_company_data = kbo_scraper(locations, nace_codes, 1, driver)
+        all_company_data = kbo_scraper(locations, nace_codes, option, driver)
         return all_company_data
     except Exception as e:
         print(f"Critical error, stopping the scraper: {e}")
