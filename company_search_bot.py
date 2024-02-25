@@ -13,9 +13,9 @@ from langchain.output_parsers import ResponseSchema
 from langchain.output_parsers import StructuredOutputParser
 from scrapers import KBO_scraper
 import numpy as np
-__import__('pysqlite3')
-import sys
-sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
+# __import__('pysqlite3')
+# import sys
+# sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
 
 organization_id = st.secrets["OPENAI_ORG_ID"]
 google_key = st.secrets["GOOGLE_API_KEY"]
@@ -57,83 +57,7 @@ function_get_companies = [
             ]
         }
     }
-]
-
-def custom_notification(status_message):
-    if status_message:
-        notification_html = f"""
-        <style>
-        @keyframes spin {{
-          0% {{ transform: rotate(360deg); }}
-          100% {{ transform: rotate(0deg); }}
-        }}
-        .loading-icon {{
-          display: inline-block;
-          animation: spin 1s linear infinite;
-        }}
-        .notification-box {{
-          padding: 0px;
-          margin: 0px 20px 0px 10px;
-          color: #111827;
-          display: flex;
-          align-items: top;
-        }}
-        .notification-text {{
-          margin-left: 10px;
-        }}
-        </style>
-
-        <div class="notification-box">
-          <div class="loading-icon">🔄</div>
-          <div class="notification-text">{status_message}</div>
-        </div>
-        """
-        status_placeholder.markdown(notification_html, unsafe_allow_html=True)
-    else:  # If the status message is empty, clear the notification
-        status_placeholder.empty()
-
-# Set openAi client , assistant ai and assistant ai thread
-def get_companies(user_input, location, area, industry):
-    
-    kbo_data_array = get_KBO_companies(user_input, location, area, industry)
-    print(f'kbo: {kbo_data_array}')
-    maps_data_array = get_google_maps_companies(location, industry)
-    print(f'maps: {maps_data_array}')
-
-   # Convert lists to numpy arrays if they are not already
-    kbo_data_array = np.array(kbo_data_array) if isinstance(kbo_data_array, list) else kbo_data_array
-    maps_data_array = np.array(maps_data_array) if isinstance(maps_data_array, list) else maps_data_array
-
-    result = ''
-    # Check if either array is empty
-    if kbo_data_array.size == 0:
-        company_data = maps_data_array
-        result = '⚠️ Geen resultaten gevonden in de KBO databank ⚠️ Zorg ervoor dat u een duidelijke omschrijving geeft van de gewenste branche en locatie. 🔍 <br><br>'
-    elif maps_data_array.size == 0:
-        company_data = kbo_data_array
-    else:
-        # Both arrays have data, concatenate them
-        company_data = np.concatenate((kbo_data_array, maps_data_array), axis=0)
-
-    # Proceed with finding unique companies if company_data is not empty
-    if company_data.size > 0:
-        _, unique_indices = np.unique(company_data[:, 1], return_index=True)
-        unique_array = company_data[unique_indices]
-    else:
-        # Return an empty numpy array if both input arrays were empty
-        unique_array = np.array([])
-    result += '<br>'.join([f"{item[0]} - {item[1]}" for item in unique_array])
-    return result  
-    
-def get_KBO_companies(user_input, location, area, industry):
-    
-    nace_dict = get_relevant_NACE(user_input, industry, 10)
-    nace_codes = nace_dict['nace_codes']
-    custom_notification(f"Relevant NACE codes found: {nace_codes}")
-
-    custom_notification(f"Retrieving company information from KBO database ... (this may take a few minutes)")
-    kbo_data_array = KBO_scraper.main([location], area, nace_codes)
-    return kbo_data_array
+]  
     
 def load_data(file_path):
     loader = CSVLoader(file_path=file_path)
@@ -143,8 +67,6 @@ def load_data(file_path):
 def get_relevant_NACE(user_input, industry, num):
 
     from langchain_openai import OpenAI
-
-    custom_notification(f"Retrieving relevant NACE codes for industry: {industry} ...")
    
     client = OpenAI(api_key=os.environ['OPENAI_KEY'], organization=organization_id)
     
@@ -181,22 +103,22 @@ def get_relevant_NACE(user_input, industry, num):
     query = f"Geef de 5 meest relevante NACE codes voor de {user_input} sector op basis van de meegegeven informatie? Antwoord met een json-dict: {format_instructions}"
 
     result = qa({"query": query})
-    print(result)
-    print(result['result'].strip())
+
+    # Print the 'page_content' of each document
+    print(f"Relevant Nace codes from retrieval:")
+    for document in result['source_documents']:
+        print(document.page_content)
     result_as_dict = output_parser.parse(result['result'].strip())
+    print(f"\nRelevante NACE codes en beschrijving voor {industry}: {result_as_dict}")
     return result_as_dict
 
-
 def get_google_maps_companies(location, industry):
-    
-    custom_notification(f"Retrieving relevant companies from Google Maps...")
     
     # Define the base URL for the Text Search request
     base_url = 'https://places.googleapis.com/v1/places:searchText'
     
     # Construct the search query combining the location and industry
     text_query = f"{industry} in {location}"
-    print(text_query)
     
     headers = {
         "Content-Type": "application/json",
@@ -211,7 +133,7 @@ def get_google_maps_companies(location, industry):
     response = requests.post(base_url, json=data, headers=headers)
 
     if response.status_code == 200:
-        print("Request was successful!")
+        print("Google API request was successful!")
         company_data_list = []
         for place in response.json()["places"]:
             place_name = place['displayName']['text']
@@ -221,8 +143,48 @@ def get_google_maps_companies(location, industry):
         company_data_array = np.array(company_data_list)
         return company_data_array
     else:
-        print("Request failed with status code:", response.status_code)
+        print("Google API request failed with status code:", response.status_code)
         return response.text    
+
+# Set openAi client , assistant ai and assistant ai thread
+def get_companies(user_input, location, area, industry):
+    
+    with st.spinner(f"Retrieving relevant NACE codes for industry: {industry} ..."):
+        nace_dict = get_relevant_NACE(user_input, industry, 10)
+        nace_codes = nace_dict['nace_codes']
+
+    with st.spinner(f"Retrieving company information from KBO database ... (this may take a few minutes)"):
+        kbo_data_array = KBO_scraper.main([location], area, nace_codes)
+        print(f'kbo: {kbo_data_array}')
+    
+    with st.spinner(f"Retrieving relevant companies from Google Maps..."):
+        maps_data_array = get_google_maps_companies(location, industry)
+        print(f'maps: {maps_data_array}')
+
+   # Convert lists to numpy arrays if they are not already
+    kbo_data_array = np.array(kbo_data_array) if isinstance(kbo_data_array, list) else kbo_data_array
+    maps_data_array = np.array(maps_data_array) if isinstance(maps_data_array, list) else maps_data_array
+
+    result = ''
+    # Check if either array is empty
+    if kbo_data_array.size == 0:
+        company_data = maps_data_array
+        result = '⚠️ Geen resultaten gevonden in de KBO databank ⚠️ <br> Zorg ervoor dat u een duidelijke omschrijving geeft van de gewenste branche en locatie. 🔍 <br><br>'
+    elif maps_data_array.size == 0:
+        company_data = kbo_data_array
+    else:
+        # Both arrays have data, concatenate them
+        company_data = np.concatenate((kbo_data_array, maps_data_array), axis=0)
+
+    # Proceed with finding unique companies if company_data is not empty
+    if company_data.size > 0:
+        _, unique_indices = np.unique(company_data[:, 1], return_index=True)
+        unique_array = company_data[unique_indices]
+    else:
+        # Return an empty numpy array if both input arrays were empty
+        unique_array = np.array([])
+    result += '<br>'.join([f"{item[0]} - {item[1]}" for item in unique_array])
+    return result
 
 # initiate assistant ai response
 def get_chat_response(user_input=""):
@@ -243,27 +205,24 @@ def get_chat_response(user_input=""):
         temperature=0.9
     )
     response_message = response.choices[0].message
-    print(f"message: {response_message}")
 
-    try: 
-
+    try:   
         if response_message.function_call:
-            custom_notification("Recommended Function call...")
-            print(f"function call: {response_message.function_call}")
             function_name = response_message.function_call.name
             if function_name == "get_companies":
                 function_args = json.loads(response_message.function_call.arguments)
+                print(f"function call arguments: {function_args}")
                 response = get_companies(user_input, **function_args)
+                
                 return response
             else: 
                 print(f"Function " + function_name + " does not exist")
     except Exception as e:
         print(e)
-        response = "⚠️ Er is iets misgegaan bij het openen van de juiste gegevensbronnen voor uw bedrijfszoekopdracht  ⚠️ \n Zorg ervoor dat u een bestaande bedrijfstak en locatie invoert. 🔍"
+        response = "⚠️ Er is iets misgegaan bij het openen van de juiste gegevensbronnen voor uw bedrijfszoekopdracht  ⚠️ <br> Zorg ervoor dat u een bestaande bedrijfstak en locatie invoert. 🔍"
         return response
     
     return response_message.content
-
 
 # Replicate Credentials
 with st.sidebar:
@@ -300,7 +259,6 @@ if "messages" not in st.session_state.keys():
     st.session_state.messages = [{"role": "assistant", "content": "Hi! :wave: Hoe kan ik u vandaag van dienst zijn?"}]
 
 # Display or clear chat messages
-print(f"messages: {st.session_state.messages}")
 for message in st.session_state.messages:
     if message["role"] == "user":
         with st.chat_message(message["role"], avatar="👤"):
@@ -324,13 +282,7 @@ if st.session_state.messages[-1]["role"] != "assistant":
     with st.chat_message("assistant", avatar="🍃"):
         status_placeholder = st.empty()
         response = get_chat_response(user_input=query)
-        custom_notification("")
-        placeholder = st.empty()
-        full_response = ''
-        for item in response:
-            full_response += item
-            placeholder.markdown(full_response, unsafe_allow_html=True)
-        placeholder.markdown(full_response, unsafe_allow_html=True)
-    message = {"role": "assistant", "content": full_response}
+        status_placeholder.markdown(response, unsafe_allow_html=True)
+    message = {"role": "assistant", "content": response}
     st.session_state.messages.append(message)
 
