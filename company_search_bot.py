@@ -13,12 +13,16 @@ from langchain.output_parsers import ResponseSchema
 from langchain.output_parsers import StructuredOutputParser
 from scrapers import KBO_scraper
 import numpy as np
+from google.cloud.sql.connector import Connector
+import sqlalchemy
+import pymysql
 # __import__('pysqlite3')
 # import sys
 # sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
 
 organization_id = st.secrets["OPENAI_ORG_ID"]
 google_key = st.secrets["GOOGLE_API_KEY"]
+db_password = st.secrets["DB_PASSWORD"]
 
 file_loader = FileSystemLoader('.')
 env = Environment(loader=file_loader)
@@ -100,7 +104,7 @@ def get_relevant_NACE(user_input, industry, num):
     output_parser = StructuredOutputParser.from_response_schemas([nace_code_schema, description_schema])
     format_instructions = output_parser.get_format_instructions()
     
-    query = f"Geef de 5 meest relevante NACE codes voor de {user_input} sector op basis van de meegegeven informatie? Antwoord met een json-dict: {format_instructions}"
+    query = f"Geef de 5 meest relevante NACE codes voor de {industry} sector op basis van de meegegeven informatie? Antwoord met een json-dict: {format_instructions}"
 
     result = qa({"query": query})
 
@@ -183,8 +187,65 @@ def get_companies(user_input, location, area, industry):
     else:
         # Return an empty numpy array if both input arrays were empty
         unique_array = np.array([])
+    
+    add_to_db(unique_array)
+    print(f"company information for {industry} in {location} is inserted")
+    
     result += '<br>'.join([f"{item[0]} - {item[1]}" for item in unique_array])
+
     return result
+
+def add_to_db(unique_array):
+
+    connector = Connector()
+
+    def get_conn():
+        conn = connector.connect(
+            "socs-414314:us-central1:socs-sql",
+            "pymysql",
+            user="root",
+            password=db_password,
+            db="socs-db"
+        )
+        return conn
+
+    pool = sqlalchemy.create_engine(
+        "mysql+pymysql://",
+        creator=get_conn,
+    )
+
+    insert_stmt = sqlalchemy.text(
+        "INSERT INTO company_info (id, company_name, company_address) VALUES (:id, :company_name, :company_address)",
+    )
+
+    select_stmt = sqlalchemy.text(
+        "SELECT COUNT(*) FROM company_info WHERE company_address = :company_address"
+    )
+
+    with pool.connect() as db_conn:
+        db_conn.execute(sqlalchemy.text("CREATE TABLE IF NOT EXISTS company_info (id INT AUTO_INCREMENT PRIMARY KEY, company_name VARCHAR(200), company_address VARCHAR(200))"))
+
+        for item in unique_array:
+            if len(item) == 2:
+                company_name, company_address = item
+
+                # Check if the address already exists
+                existing_count = db_conn.execute(select_stmt, {"company_address": company_address.strip()}).scalar()
+                
+                # If the address does not exist, insert the new record
+                if existing_count == 0:
+                    db_conn.execute(
+                        insert_stmt,
+                        {"id": None, "company_name": company_name.strip(), "company_address": company_address.strip()}
+                    )
+                else:
+                    print(f"Address {company_address} already exists in the database.")
+
+        # Optionally, fetch and print all data for verification
+        db_conn.commit()
+        data = db_conn.execute(sqlalchemy.text("SELECT * FROM company_info;")).fetchall()
+        print(data)
+
 
 # initiate assistant ai response
 def get_chat_response(user_input=""):
@@ -211,7 +272,7 @@ def get_chat_response(user_input=""):
             function_name = response_message.function_call.name
             if function_name == "get_companies":
                 function_args = json.loads(response_message.function_call.arguments)
-                print(f"function call arguments: {function_args}")
+                print(f"\n function call arguments: {function_args}")
                 response = get_companies(user_input, **function_args)
                 
                 return response
@@ -227,7 +288,7 @@ def get_chat_response(user_input=""):
 # Replicate Credentials
 with st.sidebar:
     st.title(":office: Company Search Bot")
-    st.subheader("Ik kan je helpen bij het vinden van bedrijven in verschillende sectoren en locaties.")
+    st.info("Ik kan je helpen bij het vinden van bedrijven in verschillende sectoren en locaties.", icon="ℹ️")
     if 'OPENAI_KEY' in st.secrets:
         st.success('API-sleutel al verstrekt!', icon='✅')
         api_key = st.secrets['OPENAI_KEY']
@@ -239,7 +300,7 @@ with st.sidebar:
             st.success('Ga verder met het invoeren van je prompt!', icon='👉')
     os.environ['OPENAI_KEY'] = api_key
 
-    st.subheader('Mosdels en informatie')
+    st.subheader('Models en informatie')
     selected_model = st.sidebar.selectbox('Kies een OpenAI-model', ['gpt-3.5-turbo-1106', 'gpt-4-1106-preview'], key='selected_model')
     client = OpenAI(api_key=os.environ['OPENAI_KEY'])
 
@@ -262,10 +323,10 @@ if "messages" not in st.session_state.keys():
 for message in st.session_state.messages:
     if message["role"] == "user":
         with st.chat_message(message["role"], avatar="👤"):
-            st.write(message["content"])
+            st.write(message["content"], unsafe_allow_html=True)
     else:
         with st.chat_message(message["role"], avatar="🍃"):
-            st.write(message["content"])
+            st.write(message["content"], unsafe_allow_html=True)
 
 def clear_chat_history():
     st.session_state.messages = [{"role": "assistant", "content": "Hi! :wave: Hoe kan ik u vandaag van dienst zijn?"}]
@@ -275,7 +336,7 @@ st.sidebar.button('Clear Chat History', on_click=clear_chat_history)
 if query := st.chat_input(disabled=not api_key):
     st.session_state.messages.append({"role": "user", "content": query})
     with st.chat_message("user", avatar="👤"):
-        st.write(query)
+        st.write(query, unsafe_allow_html=True)
 
 # Generate a new response if last message is not from assistant
 if st.session_state.messages[-1]["role"] != "assistant":

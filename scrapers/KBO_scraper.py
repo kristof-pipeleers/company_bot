@@ -64,7 +64,7 @@ def scrape_data(nace_code, location, temp_pdf_filename, option, driver):
             print('city only')
         elif option:
             municipality_selector = ('gemb', 'gemeente0')
-            print('city en neighbours')
+            print('city and neighbours')
         elif option == 3:
             municipality_selector = ('post', 'postnummer1')
 
