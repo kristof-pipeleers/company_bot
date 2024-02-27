@@ -15,7 +15,10 @@ from scrapers import KBO_scraper
 import numpy as np
 from google.cloud.sql.connector import Connector
 import sqlalchemy
-import pymysql
+import googlemaps
+import pandas as pd
+import pydeck as pdk
+
 # __import__('pysqlite3')
 # import sys
 # sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
@@ -109,9 +112,9 @@ def get_relevant_NACE(user_input, industry, num):
     result = qa({"query": query})
 
     # Print the 'page_content' of each document
-    print(f"Relevant Nace codes from retrieval:")
-    for document in result['source_documents']:
-        print(document.page_content)
+    # print(f"Relevant Nace codes from retrieval:")
+    # for document in result['source_documents']:
+    #     print(document.page_content)
     result_as_dict = output_parser.parse(result['result'].strip())
     print(f"\nRelevante NACE codes en beschrijving voor {industry}: {result_as_dict}")
     return result_as_dict
@@ -188,64 +191,106 @@ def get_companies(user_input, location, area, industry):
         # Return an empty numpy array if both input arrays were empty
         unique_array = np.array([])
     
-    add_to_db(unique_array)
-    print(f"company information for {industry} in {location} is inserted")
+    lat_lon_list = handle_database_operations(unique_array)
+    # print(f"company information for {industry} in {location} is inserted")
+
+    pydeck_map = initialize_pydeck_map(lat_lon_list)
     
     result += '<br>'.join([f"{item[0]} - {item[1]}" for item in unique_array])
 
-    return result
+    return result, pydeck_map
+    
 
-def add_to_db(unique_array):
+def handle_database_operations(unique_array):
 
-    connector = Connector()
+    # connector = Connector()
+    map_client = googlemaps.Client(key=google_key)
 
-    def get_conn():
-        conn = connector.connect(
-            "socs-414314:us-central1:socs-sql",
-            "pymysql",
-            user="root",
-            password=db_password,
-            db="socs-db"
-        )
-        return conn
+    # def get_conn():
+    #     conn = connector.connect(
+    #         "socs-414314:us-central1:socs-sql",
+    #         "pymysql",
+    #         user="root",
+    #         password=db_password,
+    #         db="socs-db"
+    #     )
+    #     return conn
 
-    pool = sqlalchemy.create_engine(
-        "mysql+pymysql://",
-        creator=get_conn,
+    # pool = sqlalchemy.create_engine(
+    #     "mysql+pymysql://",
+    #     creator=get_conn,
+    # )
+
+    # insert_stmt = sqlalchemy.text(
+    #     "INSERT INTO company_info (id, company_name, company_address) VALUES (:id, :company_name, :company_address)",
+    # )
+
+    # select_stmt = sqlalchemy.text(
+    #     "SELECT COUNT(*) FROM company_info WHERE company_address = :company_address"
+    # )
+
+    # with pool.connect() as db_conn:
+    #     db_conn.execute(sqlalchemy.text(
+    #         "CREATE TABLE IF NOT EXISTS company_info (id INT AUTO_INCREMENT PRIMARY KEY, company_name VARCHAR(200), company_address VARCHAR(200))"
+    #     ))
+
+    lat_lon_list = [] #indent of the 'with'
+    for item in unique_array:
+        if len(item) == 2:
+            company_name, company_address = item
+
+            response = map_client.geocode(company_address)
+            if response:
+                location = response[0]['geometry']['location']
+                latitude = location['lat']
+                longitude = location['lng']
+                lat_lon_list.append([latitude, longitude, company_name, company_address]) #indent until here
+
+                    # # Check if the address already exists
+                    # existing_count = db_conn.execute(select_stmt, {"company_address": company_address.strip()}).scalar()
+
+                    # # If the address does not exist, insert the new record
+                    # if existing_count == 0:
+                    #     db_conn.execute(
+                    #         insert_stmt,
+                    #         {"id": None, "company_name": company_name.strip(), "company_address": company_address.strip()}
+                    #     )
+                    # else:
+                    #     print(f"Address {company_address} already exists in the database.")
+
+        # db_conn.commit()
+        # data = db_conn.execute(sqlalchemy.text("SELECT * FROM company_info;")).fetchall()
+        # print(data)
+
+    return lat_lon_list #indent
+
+
+def initialize_pydeck_map(lat_lon_list):
+    df = pd.DataFrame(lat_lon_list, columns=['lat', 'lon', 'company_name', 'company_address'])
+
+    layer = pdk.Layer(
+        'ScatterplotLayer',
+        df,
+        get_position=['lon', 'lat'],
+        get_color='[200, 30, 0, 160]',
+        get_radius=100,
+        pickable=True
     )
 
-    insert_stmt = sqlalchemy.text(
-        "INSERT INTO company_info (id, company_name, company_address) VALUES (:id, :company_name, :company_address)",
+    view_state = pdk.ViewState(
+        latitude=df['lat'].mean(),
+        longitude=df['lon'].mean(),
+        zoom=10,
+        pitch=0
     )
 
-    select_stmt = sqlalchemy.text(
-        "SELECT COUNT(*) FROM company_info WHERE company_address = :company_address"
+    r = pdk.Deck(
+        layers=[layer],
+        initial_view_state=view_state,
+        map_style='mapbox://styles/mapbox/light-v10',
+        tooltip={"html": "<b>Company Name:</b> {company_name}<br><b>Address:</b> {company_address}", "style": {"color": "white"}}
     )
-
-    with pool.connect() as db_conn:
-        db_conn.execute(sqlalchemy.text("CREATE TABLE IF NOT EXISTS company_info (id INT AUTO_INCREMENT PRIMARY KEY, company_name VARCHAR(200), company_address VARCHAR(200))"))
-
-        for item in unique_array:
-            if len(item) == 2:
-                company_name, company_address = item
-
-                # Check if the address already exists
-                existing_count = db_conn.execute(select_stmt, {"company_address": company_address.strip()}).scalar()
-                
-                # If the address does not exist, insert the new record
-                if existing_count == 0:
-                    db_conn.execute(
-                        insert_stmt,
-                        {"id": None, "company_name": company_name.strip(), "company_address": company_address.strip()}
-                    )
-                else:
-                    print(f"Address {company_address} already exists in the database.")
-
-        # Optionally, fetch and print all data for verification
-        db_conn.commit()
-        data = db_conn.execute(sqlalchemy.text("SELECT * FROM company_info;")).fetchall()
-        print(data)
-
+    return r
 
 # initiate assistant ai response
 def get_chat_response(user_input=""):
@@ -272,23 +317,23 @@ def get_chat_response(user_input=""):
             function_name = response_message.function_call.name
             if function_name == "get_companies":
                 function_args = json.loads(response_message.function_call.arguments)
-                print(f"\n function call arguments: {function_args}")
-                response = get_companies(user_input, **function_args)
+                print(f"\nfunction call arguments: {function_args}")
+                response, pydeck_map = get_companies(user_input, **function_args)
                 
-                return response
+                return response, pydeck_map
             else: 
                 print(f"Function " + function_name + " does not exist")
     except Exception as e:
         print(e)
         response = "⚠️ Er is iets misgegaan bij het openen van de juiste gegevensbronnen voor uw bedrijfszoekopdracht  ⚠️ <br> Zorg ervoor dat u een bestaande bedrijfstak en locatie invoert. 🔍"
-        return response
+        return response, None
     
-    return response_message.content
+    return response_message.content, None
 
 # Replicate Credentials
 with st.sidebar:
-    st.title(":office: Company Search Bot")
-    st.info("Ik kan je helpen bij het vinden van bedrijven in verschillende sectoren en locaties.", icon="ℹ️")
+    st.title(":office: :orange[Company Search Bot]")
+    st.info(" Ik kan je helpen bij het vinden van bedrijven in verschillende sectoren en locaties.🔍", icon="ℹ️")
     if 'OPENAI_KEY' in st.secrets:
         st.success('API-sleutel al verstrekt!', icon='✅')
         api_key = st.secrets['OPENAI_KEY']
@@ -300,11 +345,12 @@ with st.sidebar:
             st.success('Ga verder met het invoeren van je prompt!', icon='👉')
     os.environ['OPENAI_KEY'] = api_key
 
-    st.subheader('Models en informatie')
+    st.subheader('🤖 Models en informatie')
     selected_model = st.sidebar.selectbox('Kies een OpenAI-model', ['gpt-3.5-turbo-1106', 'gpt-4-1106-preview'], key='selected_model')
     client = OpenAI(api_key=os.environ['OPENAI_KEY'])
 
-    st.markdown('📖 Wil je meer informatie over deze chatbot? Neem contact op met info@werecircle.be')
+    st.subheader('📖 Informatie')
+    st.markdown('Wil je meer informatie over deze chatbot? Neem contact op met info@werecircle.be')
 
     image_urls = [
         'images/werecircle-logo.png',
@@ -341,9 +387,12 @@ if query := st.chat_input(disabled=not api_key):
 # Generate a new response if last message is not from assistant
 if st.session_state.messages[-1]["role"] != "assistant":
     with st.chat_message("assistant", avatar="🍃"):
-        status_placeholder = st.empty()
-        response = get_chat_response(user_input=query)
-        status_placeholder.markdown(response, unsafe_allow_html=True)
+        response_placeholder = st.empty()
+        map_placeholder = st.empty()
+        response, pydeck_map = get_chat_response(user_input=query)
+        response_placeholder.markdown(response, unsafe_allow_html=True)
+        if pydeck_map is not None:
+            map_placeholder.pydeck_chart(pydeck_map)
     message = {"role": "assistant", "content": response}
     st.session_state.messages.append(message)
 
