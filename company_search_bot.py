@@ -191,50 +191,21 @@ def get_companies(user_input, location, area, industry):
         # Return an empty numpy array if both input arrays were empty
         unique_array = np.array([])
     
-    lat_lon_list = handle_database_operations(unique_array)
-    # print(f"company information for {industry} in {location} is inserted")
-
-    pydeck_map = initialize_pydeck_map(lat_lon_list)
+    # if add_to_db(unique_array):
+    #     print(f"company information for {industry} in {location} is inserted")
+    # else:
+    #     print(f"Error while interting company information for {industry} in {location}. Is the SQL database running?")
+    
+    pydeck_map = generate_pydeck_map(unique_array)
     
     result += '<br>'.join([f"{item[0]} - {item[1]}" for item in unique_array])
 
     return result, pydeck_map
     
-
-def handle_database_operations(unique_array):
-
-    # connector = Connector()
+def generate_pydeck_map(unique_array):
     map_client = googlemaps.Client(key=google_key)
 
-    # def get_conn():
-    #     conn = connector.connect(
-    #         "socs-414314:us-central1:socs-sql",
-    #         "pymysql",
-    #         user="root",
-    #         password=db_password,
-    #         db="socs-db"
-    #     )
-    #     return conn
-
-    # pool = sqlalchemy.create_engine(
-    #     "mysql+pymysql://",
-    #     creator=get_conn,
-    # )
-
-    # insert_stmt = sqlalchemy.text(
-    #     "INSERT INTO company_info (id, company_name, company_address) VALUES (:id, :company_name, :company_address)",
-    # )
-
-    # select_stmt = sqlalchemy.text(
-    #     "SELECT COUNT(*) FROM company_info WHERE company_address = :company_address"
-    # )
-
-    # with pool.connect() as db_conn:
-    #     db_conn.execute(sqlalchemy.text(
-    #         "CREATE TABLE IF NOT EXISTS company_info (id INT AUTO_INCREMENT PRIMARY KEY, company_name VARCHAR(200), company_address VARCHAR(200))"
-    #     ))
-
-    lat_lon_list = [] #indent of the 'with'
+    lat_lon_list = []
     for item in unique_array:
         if len(item) == 2:
             company_name, company_address = item
@@ -244,25 +215,67 @@ def handle_database_operations(unique_array):
                 location = response[0]['geometry']['location']
                 latitude = location['lat']
                 longitude = location['lng']
-                lat_lon_list.append([latitude, longitude, company_name, company_address]) #indent until here
+                lat_lon_list.append([latitude, longitude, company_name, company_address])
+    
+    pydeck_map = initialize_pydeck_map(lat_lon_list)
+    return pydeck_map
 
-                    # # Check if the address already exists
-                    # existing_count = db_conn.execute(select_stmt, {"company_address": company_address.strip()}).scalar()
+def add_to_db(unique_array):
 
-                    # # If the address does not exist, insert the new record
-                    # if existing_count == 0:
-                    #     db_conn.execute(
-                    #         insert_stmt,
-                    #         {"id": None, "company_name": company_name.strip(), "company_address": company_address.strip()}
-                    #     )
-                    # else:
-                    #     print(f"Address {company_address} already exists in the database.")
+    connector = Connector()
+    
+    def get_conn():
+        try:
+            conn = connector.connect(
+                "socs-415712:us-west1:socs-db",
+                "pymysql",
+                user="root",
+                password=db_password,
+                db="socs-db"
+            )
+            return conn
+        except Exception as conn_error:
+            print(f"Connection error: {conn_error}")
+            raise conn_error
 
-        # db_conn.commit()
-        # data = db_conn.execute(sqlalchemy.text("SELECT * FROM company_info;")).fetchall()
-        # print(data)
+    pool = sqlalchemy.create_engine(
+        "mysql+pymysql://",
+        creator=get_conn,
+    )
 
-    return lat_lon_list #indent
+    insert_stmt = sqlalchemy.text(
+        "INSERT INTO company_info (id, company_name, company_address) VALUES (:id, :company_name, :company_address)",
+    )
+
+    select_stmt = sqlalchemy.text(
+        "SELECT COUNT(*) FROM company_info WHERE company_address = :company_address"
+    )
+
+    with pool.connect() as db_conn:
+        db_conn.execute(sqlalchemy.text(
+            "CREATE TABLE IF NOT EXISTS company_info (id INT AUTO_INCREMENT PRIMARY KEY, company_name VARCHAR(200), company_address VARCHAR(200))"
+        ))
+
+        for item in unique_array:
+            if len(item) == 2:
+                company_name, company_address = item
+
+                # Check if the address already exists
+                existing_count = db_conn.execute(select_stmt, {"company_address": company_address.strip()}).scalar()
+
+                # If the address does not exist, insert the new record
+                if existing_count == 0:
+                    db_conn.execute(
+                        insert_stmt,
+                        {"id": None, "company_name": company_name.strip(), "company_address": company_address.strip()}
+                    )
+                else:
+                    print(f"Address {company_address} already exists in the database.")
+
+        db_conn.commit()
+        data = db_conn.execute(sqlalchemy.text("SELECT * FROM company_info;")).fetchall()
+        print(data)
+        return True
 
 
 def initialize_pydeck_map(lat_lon_list):
@@ -293,7 +306,7 @@ def initialize_pydeck_map(lat_lon_list):
     return r
 
 # initiate assistant ai response
-def get_chat_response(user_input=""):
+def get_chat_response(user_input, client, selected_model):
     
     dialogue = []
     dialogue.append({"role": "system", "content": system_message})
@@ -311,6 +324,8 @@ def get_chat_response(user_input=""):
         temperature=0.9
     )
     response_message = response.choices[0].message
+
+    print(f"ID= {response.id}")
 
     try:   
         if response_message.function_call:
@@ -330,69 +345,75 @@ def get_chat_response(user_input=""):
     
     return response_message.content, None
 
-# Replicate Credentials
-with st.sidebar:
-    st.title(":office: :orange[Company Search Bot]")
-    st.info(" Ik kan je helpen bij het vinden van bedrijven in verschillende sectoren en locaties.🔍", icon="ℹ️")
-    if 'OPENAI_KEY' in st.secrets:
-        st.success('API-sleutel al verstrekt!', icon='✅')
-        api_key = st.secrets['OPENAI_KEY']
-    else:
-        api_key = st.text_input('Voer je OpenAI API-token in:', type='password')
-        if not (api_key.startswith('sk-') and len(api_key)==51):
-            st.warning('Voer je OpenAI API-token in!', icon='⚠️')
+def run_app(username=None):
+
+    # Replicate Credentials
+    with st.sidebar:
+        st.title("🍃 advAI:green[CE]")
+        st.info(" Ik kan je helpen bij het vinden van bedrijven in verschillende sectoren en locaties.🔍", icon="ℹ️")
+        if 'OPENAI_KEY' in st.secrets:
+            st.success('API-sleutel al verstrekt!', icon='✅')
+            api_key = st.secrets['OPENAI_KEY']
         else:
-            st.success('Ga verder met het invoeren van je prompt!', icon='👉')
-    os.environ['OPENAI_KEY'] = api_key
+            api_key = st.text_input('Voer je OpenAI API-token in:', type='password')
+            if not (api_key.startswith('sk-') and len(api_key)==51):
+                st.warning('Voer je OpenAI API-token in!', icon='⚠️')
+            else:
+                st.success('Ga verder met het invoeren van je prompt!', icon='👉')
+        os.environ['OPENAI_KEY'] = api_key
 
-    st.subheader('🤖 Models en informatie')
-    selected_model = st.sidebar.selectbox('Kies een OpenAI-model', ['gpt-3.5-turbo-1106', 'gpt-4-1106-preview'], key='selected_model')
-    client = OpenAI(api_key=os.environ['OPENAI_KEY'])
+        st.subheader('🤖 Models')
+        selected_model = st.sidebar.selectbox('Kies een OpenAI-model', ['gpt-3.5-turbo-1106', 'gpt-4-1106-preview'], key='selected_model')
+        client = OpenAI(api_key=os.environ['OPENAI_KEY'])
 
-    st.subheader('📖 Informatie')
-    st.markdown('Wil je meer informatie over deze chatbot? Neem contact op met info@werecircle.be')
+        st.subheader('📖 Informatie')
+        st.markdown('Wil je meer informatie over deze chatbot? Neem contact op met info@werecircle.be')
 
-    image_urls = [
-        'images/werecircle-logo.png',
-        'images/greenaumatic-logo.png'
-    ]
+        image_urls = [
+            'images/werecircle-logo.png',
+            'images/greenaumatic-logo.png'
+        ]
 
-    cols = st.sidebar.columns(len(image_urls))
-    for col, url in zip(cols, image_urls):
-        col.image(url, width=150)
+        cols = st.columns(len(image_urls))
+        for col, url in zip(cols, image_urls):
+            col.image(url, width=150)
 
-# Store LLM generated responses
-if "messages" not in st.session_state.keys():
-    st.session_state.messages = [{"role": "assistant", "content": "Hi! :wave: Hoe kan ik u vandaag van dienst zijn?"}]
+    # Welcome message
+    if username:
+        st.title(f":wave: Welcome, {username}!")
 
-# Display or clear chat messages
-for message in st.session_state.messages:
-    if message["role"] == "user":
-        with st.chat_message(message["role"], avatar="👤"):
-            st.write(message["content"], unsafe_allow_html=True)
-    else:
-        with st.chat_message(message["role"], avatar="🍃"):
-            st.write(message["content"], unsafe_allow_html=True)
+    # Store LLM generated responses
+    if "messages" not in st.session_state.keys():
+        st.session_state.messages = [{"role": "assistant", "content": "Hoe kan ik u vandaag van dienst zijn?"}]
 
-def clear_chat_history():
-    st.session_state.messages = [{"role": "assistant", "content": "Hi! :wave: Hoe kan ik u vandaag van dienst zijn?"}]
-st.sidebar.button('Clear Chat History', on_click=clear_chat_history)
+    # Display or clear chat messages
+    for message in st.session_state.messages:
+        if message["role"] == "user":
+            with st.chat_message(message["role"], avatar="👤"):
+                st.write(message["content"], unsafe_allow_html=True)
+        else:
+            with st.chat_message(message["role"], avatar="🍃"):
+                st.write(message["content"], unsafe_allow_html=True)
 
-# User-provided prompt
-if query := st.chat_input(disabled=not api_key):
-    st.session_state.messages.append({"role": "user", "content": query})
-    with st.chat_message("user", avatar="👤"):
-        st.write(query, unsafe_allow_html=True)
+    def clear_chat_history():
+        st.session_state.messages = [{"role": "assistant", "content": "Hoe kan ik u vandaag van dienst zijn?"}]
+    st.sidebar.button('Clear Chat History', on_click=clear_chat_history)
 
-# Generate a new response if last message is not from assistant
-if st.session_state.messages[-1]["role"] != "assistant":
-    with st.chat_message("assistant", avatar="🍃"):
-        response_placeholder = st.empty()
-        map_placeholder = st.empty()
-        response, pydeck_map = get_chat_response(user_input=query)
-        response_placeholder.markdown(response, unsafe_allow_html=True)
-        if pydeck_map is not None:
-            map_placeholder.pydeck_chart(pydeck_map)
-    message = {"role": "assistant", "content": response}
-    st.session_state.messages.append(message)
+    # User-provided prompt
+    if query := st.chat_input(disabled=not api_key):
+        st.session_state.messages.append({"role": "user", "content": query})
+        with st.chat_message("user", avatar="👤"):
+            st.write(query, unsafe_allow_html=True)
+
+    # Generate a new response if last message is not from assistant
+    if st.session_state.messages[-1]["role"] != "assistant":
+        with st.chat_message("assistant", avatar="🍃"):
+            response_placeholder = st.empty()
+            map_placeholder = st.empty()
+            response, pydeck_map = get_chat_response(user_input=query, client=client, selected_model=selected_model)
+            response_placeholder.markdown(response, unsafe_allow_html=True)
+            if pydeck_map is not None:
+                map_placeholder.pydeck_chart(pydeck_map)
+        message = {"role": "assistant", "content": response}
+        st.session_state.messages.append(message)
 

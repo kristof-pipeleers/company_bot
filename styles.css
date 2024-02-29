@@ -1,0 +1,17 @@
+div.stButton > button:last-child {
+    background-color: #2F5D28; /* Vibrant red background */
+    color: white; /* White text */
+    border: none; /* No border */
+    border-radius: 8px; /* Rounded corners */
+    padding: 10px 24px; /* Padding around the text */
+    font-size: 16px; /* Larger font size */
+    width: 100%;
+}
+
+div.stButton > button:last-child:hover {
+    background-color: #23461E; /* Darker red on hover */
+}
+
+h1:first-of-type {
+    color: #E84E1B; /* Change the text color to orange */
+}
