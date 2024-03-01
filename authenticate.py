@@ -1,9 +1,10 @@
 import streamlit as st
 import firebase_admin
 from firebase_admin import credentials, firestore, auth, storage
-from company_search_bot import run_app
+import company_search_bot
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
+import json
 
 # Function to load CSS from a file and inject it into the app
 def load_css(file_name):
@@ -12,10 +13,14 @@ def load_css(file_name):
 
 load_css('styles.css')
 
-# Initialize Firebase
-if not firebase_admin._apps:
-    cred = credentials.Certificate(st.secrets["SERVICE_ACCOUNT"])
-    firebase_admin.initialize_app(cred, {'storageBucket': 'socs-415712.appspot.com'})
+
+# Load service account credentials from secrets
+service_account_info = st.secrets["service_account"]
+
+# Initialize Firebase app with service account credentials
+cred = credentials.Certificate(json.loads(service_account_info))
+firebase_admin.initialize_app(cred, {'storageBucket': 'socs-415712.appspot.com'})
+
 
 # Firestore Database
 db = firestore.client()
@@ -190,7 +195,7 @@ def show_auth():
 
 
 if st.session_state.logged_in:
-    run_app(st.session_state.get('username'))
+    company_search_bot.run_app(st.session_state.get('username'))
     if st.sidebar.button('Log out'):
         switch_to_login_page()  # Switch back to the login page on logout
 else:

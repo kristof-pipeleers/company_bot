@@ -17,7 +17,7 @@ from google.cloud.sql.connector import Connector
 import sqlalchemy
 import googlemaps
 import pandas as pd
-import pydeck as pdk
+import pydeck as pdk 
 
 __import__('pysqlite3')
 import sys
