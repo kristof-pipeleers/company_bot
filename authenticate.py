@@ -2,6 +2,8 @@ import streamlit as st
 import firebase_admin
 from firebase_admin import credentials, firestore, auth, storage
 from company_search_bot import run_app
+from sendgrid import SendGridAPIClient
+from sendgrid.helpers.mail import Mail
 
 # Function to load CSS from a file and inject it into the app
 def load_css(file_name):
@@ -11,12 +13,9 @@ def load_css(file_name):
 load_css('styles.css')
 
 # Initialize Firebase
-try:
-    firebase_app = firebase_admin.get_app()
-except ValueError:
-    # Assuming 'st.secrets["SERVICE_ACCOUNT"]' is a valid Firebase service account config
-    cred = credentials.Certificate(st.secrets["SERVICE_ACCOUNT"])
-    firebase_app = firebase_admin.initialize_app(cred, {'storageBucket': 'socs-415712.appspot.com'})
+if not firebase_admin._apps:
+    cred = credentials.Certificate(st.secrets["firebase"])
+    firebase_admin.initialize_app(cred, {'storageBucket': 'socs-415712.appspot.com'})
 
 # Firestore Database
 db = firestore.client()
@@ -61,7 +60,7 @@ def load_welcome():
         
         - 💡 **Snelle en nauwkeurige informatie:** Bespaar tijd met snelle en relevante zoekresultaten.
         - 📝 **Eenvoudige interactie:** Gebruiksvriendelijke interface met stapsgewijze begeleiding.
-        - 📡 **externe data bronnen:** De chatbot maakt gebruik van meerdere databronnen en combineert de resultaten tot het optimale antwoord.
+        - 📡 **Externe data bronnen:** De chatbot maakt gebruik van meerdere databronnen en combineert de resultaten tot het optimale antwoord.
         
         Begin nu om de kracht van 🍃 :orange[advAI]:green[CE] te ervaren! 🚀
     """, unsafe_allow_html=True)
@@ -85,12 +84,68 @@ def load_welcome():
         Volg ons ook op [sociale media](https://www.linkedin.com/company/werecircle/) voor de laatste updates en nuttige tips! 🌟
     """, unsafe_allow_html=True)
 
+def send_custom_email(email, username, link):
+    # Simple email text
+    email_body = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+    <style>
+    body {{
+        font-family: Arial, sans-serif;
+        line-height: 1.6;
+    }}
+    .content {{
+        max-width: 600px;
+        margin: 20px auto;
+        padding: 20px;
+        background: #f4f4f4;
+        border-radius: 8px;
+    }}
+    .button {{
+        display: inline-block;
+        padding: 10px 20px;
+        background: #3498db;
+        color: #ffffff;
+        text-decoration: none;
+        border-radius: 5px;
+        margin-top: 20px;
+    }}
+    </style>
+    </head>
+    <body>
+    <div class="content">
+        <h1>👋 Hi, {username}!</h1>
+        <p>Verifieer uw e-mailadres om advAICE te kunnen gebruiken.</p>
+        <a href="{link}" class="button">E-mail verifiëren</a>
+        <p>Als u dit niet heeft aangevraagd, negeer dan deze e-mail.</p>
+        <p>Bedankt,<br>Uw 🍃 advAICE Team</p>
+    </div>
+    </body>
+    </html>
+    """
+
+    message = Mail(
+        from_email='pkristof49@gmail.com',
+        to_emails=email,
+        subject='Verify your email for advAICE',
+        html_content=email_body)
+    try:
+        sg = SendGridAPIClient(st.secrets['SENDGRID_KEY'])
+        response = sg.send(message)
+        print(response.status_code)
+        print(response.body)
+        print(response.headers)
+    except Exception as e:
+        print(e.message)
+
+
 # Authentication Block
 def show_auth():
     st.sidebar.title("🍃 advAI:green[CE]")
     choice = st.sidebar.radio('Login / Registreer', ['Login', 'Sign up'])
 
-    email = st.sidebar.text_input('E-mailadres' , placeholder="example@random.com")
+    email = st.sidebar.text_input('E-mailadres', placeholder="example@random.com")
     password = st.sidebar.text_input('Wachtwoord', type='password', help=f'Het wachtwoord moet minstens {MIN_PASSWORD_LENGTH} tekens lang zijn.', placeholder='Voer uw wachtwoord in')
 
     if choice == 'Sign up':
@@ -100,29 +155,36 @@ def show_auth():
             if len(password) < MIN_PASSWORD_LENGTH:
                 st.sidebar.error(f'Het wachtwoord moet minstens {MIN_PASSWORD_LENGTH} tekens lang zijn.', icon='⚠️')
             else:
-                if submit:
-                    user = auth.create_user(email=email, password=password)
-                    st.sidebar.success(' Je account is succesvol aangemaakt!', icon='✅')
+                try:
+                    user = auth.create_user(email=email, password=password, display_name=username)
+                    # Send verification email
+                    verification_link = auth.generate_email_verification_link(email, action_code_settings=None)
+                    send_custom_email(email=email, username=username, link=verification_link)
+                    st.sidebar.success('Je account is succesvol aangemaakt! Controleer je inbox om je e-mail te verifiëren.', icon='✅')
                     st.balloons()
-                    # Add user data to Firestore
-                    user_data = {'username': username, 'email': email}
-                    db.collection('users').document(user.uid).set(user_data)
-                    st.title(f'👋 Welkom, {username}!')
-                    st.info(' Login via de login checkbox', icon='👈')
+                    
+                except Exception as e:
+                    st.sidebar.error(f'Fout bij het aanmaken van account: {e}', icon='⚠️')
 
     elif choice == 'Login':
         if st.sidebar.button('Login'):
             try:
                 user = auth.get_user_by_email(email)
-                # Assuming you have a 'users' collection with documents named by user UID
-                user_data = db.collection('users').document(user.uid).get()
-                print(user_data)
-                if user_data.exists:
+                # Check if email is verified
+                if user.email_verified:
+                    # Add user data to Firestore
+                    user_data = {'username': user.display_name, 'email': user.email, 'email_verified': user.email_verified}
+                    db.collection('users').document(user.uid).set(user_data)
+
+                    # User data fetch from Firestore is assumed to be done here
                     st.sidebar.success(f'Succesvol ingelogd', icon='✅')
-                    username = user_data.get('username')
-                    switch_to_app_page(username)
+                    switch_to_app_page(user.display_name)  # Assuming 'display_name' is set to the username
+                else:
+                    st.sidebar.warning('Verifieer je e-mailadres om in te loggen.', icon='📧')
             except firebase_admin.auth.UserNotFoundError:
                 st.sidebar.error(f'E-mailadres of wachtwoord is onjuist', icon='⚠️')
+            except Exception as e:
+                st.sidebar.error(f'Inlogfout: {e}', icon='⚠️')
 
     load_welcome()
 
@@ -133,3 +195,4 @@ if st.session_state.logged_in:
         switch_to_login_page()  # Switch back to the login page on logout
 else:
     show_auth()
+
