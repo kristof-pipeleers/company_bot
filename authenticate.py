@@ -14,7 +14,7 @@ load_css('styles.css')
 
 # Initialize Firebase
 if not firebase_admin._apps:
-    cred = credentials.Certificate(st.secrets["firebase"])
+    cred = credentials.Certificate(st.secrets["SERVICE_ACCOUNT"])
     firebase_admin.initialize_app(cred, {'storageBucket': 'socs-415712.appspot.com'})
 
 # Firestore Database
