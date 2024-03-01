@@ -14,12 +14,15 @@ def load_css(file_name):
 load_css('styles.css')
 
 
-# Load service account credentials from secrets
-service_account_info = st.secrets["service_account"]
+if not firebase_admin._apps:
+    # Load service account credentials from secrets
+    service_account_info = st.secrets["service_account"]
 
-# Initialize Firebase app with service account credentials
-cred = credentials.Certificate(json.loads(service_account_info))
-firebase_admin.initialize_app(cred, {'storageBucket': 'socs-415712.appspot.com'})
+    # Initialize Firebase app with service account credentials
+    cred = credentials.Certificate(json.loads(service_account_info))
+    firebase_admin.initialize_app(cred, {'storageBucket': 'socs-415712.appspot.com'})
+else:
+    firebase_admin.get_app(name='[DEFAULT]')
 
 
 # Firestore Database
