@@ -180,6 +180,7 @@ def setup_chrome_driver():
     driver.delete_all_cookies()
     return driver
 
+
 def main(locations, option, nace_codes):
     driver = setup_chrome_driver() 
     try:
