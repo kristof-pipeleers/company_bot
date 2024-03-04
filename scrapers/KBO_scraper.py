@@ -175,6 +175,8 @@ def setup_chrome_driver():
     chrome_options.add_argument("--profile-directory=Default")
     chrome_options.add_argument("--disable-plugins-discovery")
     chrome_options.add_argument("--incognito")
+    chrome_options.add_argument('--no-sandbox') 
+    chrome_options.add_argument('--disable-dev-shm-usage')
     chrome_options.add_experimental_option("prefs", {"profile.managed_default_content_settings.images": 2,})
     driver = webdriver.Chrome(chrome_options)
     driver.delete_all_cookies()
