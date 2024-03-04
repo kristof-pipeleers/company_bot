@@ -39,8 +39,9 @@ if 'logged_in' not in st.session_state:
     st.session_state['logged_in'] = False
 
 # Page switch function
-def switch_to_app_page(username=None):
+def switch_to_app_page(userId=None, username=None):
     st.session_state['logged_in'] = True
+    st.session_state['userId'] = userId
     st.session_state['username'] = username
     st.rerun()
 
@@ -186,7 +187,7 @@ def show_auth():
 
                     # User data fetch from Firestore is assumed to be done here
                     st.sidebar.success(f'Succesvol ingelogd', icon='✅')
-                    switch_to_app_page(user.display_name)  # Assuming 'display_name' is set to the username
+                    switch_to_app_page(user.uid, user.display_name)  # Assuming 'display_name' is set to the username
                 else:
                     st.sidebar.warning('Verifieer je e-mailadres om in te loggen.', icon='📧')
             except firebase_admin.auth.UserNotFoundError:
@@ -198,7 +199,7 @@ def show_auth():
 
 
 if st.session_state.logged_in:
-    company_search_bot.run_app(st.session_state.get('username'))
+    company_search_bot.run_app(db=db)
     if st.sidebar.button('Log out'):
         switch_to_login_page()  # Switch back to the login page on logout
 else:

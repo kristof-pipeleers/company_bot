@@ -3,7 +3,6 @@ import os
 from openai import OpenAI
 from jinja2 import Environment, FileSystemLoader
 import streamlit as st
-import time
 import json
 from langchain.chains import RetrievalQA
 from langchain_community.document_loaders.csv_loader import CSVLoader
@@ -13,11 +12,9 @@ from langchain.output_parsers import ResponseSchema
 from langchain.output_parsers import StructuredOutputParser
 from scrapers import KBO_scraper
 import numpy as np
-from google.cloud.sql.connector import Connector
-import sqlalchemy
 import googlemaps
 import pandas as pd
-import pydeck as pdk 
+import pydeck as pdk
 
 __import__('pysqlite3')
 import sys
@@ -71,7 +68,7 @@ def load_data(file_path):
     data = loader.load()
     return data
 
-def get_relevant_NACE(user_input, industry, num):
+def get_relevant_NACE(industry, num):
 
     from langchain_openai import OpenAI
    
@@ -154,10 +151,10 @@ def get_google_maps_companies(location, industry):
         return response.text    
 
 # Set openAi client , assistant ai and assistant ai thread
-def get_companies(user_input, location, area, industry):
+def get_companies(db, location, area, industry):
     
     with st.spinner(f"Retrieving relevant NACE codes for industry: {industry} ..."):
-        nace_dict = get_relevant_NACE(user_input, industry, 10)
+        nace_dict = get_relevant_NACE(industry, 10)
         nace_codes = nace_dict['nace_codes']
 
     with st.spinner(f"Retrieving company information from KBO database ... (this may take a few minutes)"):
@@ -191,12 +188,14 @@ def get_companies(user_input, location, area, industry):
         # Return an empty numpy array if both input arrays were empty
         unique_array = np.array([])
     
-    # if add_to_db(unique_array):
-    #     print(f"company information for {industry} in {location} is inserted")
-    # else:
-    #     print(f"Error while interting company information for {industry} in {location}. Is the SQL database running?")
+    with st.spinner(f"Inserting company data into database..."):
+        if add_to_db(db, industry, location, unique_array):
+            print(f"company information for {industry} in {location} is inserted")
+        else:
+            print(f"Error while interting company information for {industry} in {location}. Is the SQL database running?")
     
-    pydeck_map = generate_pydeck_map(unique_array)
+    with st.spinner(f"Generating Map..."):
+        pydeck_map = generate_pydeck_map(unique_array)
     
     result += '<br>'.join([f"{item[0]} - {item[1]}" for item in unique_array])
 
@@ -220,62 +219,43 @@ def generate_pydeck_map(unique_array):
     pydeck_map = initialize_pydeck_map(lat_lon_list)
     return pydeck_map
 
-def add_to_db(unique_array):
+def add_to_db(db, industry, location, unique_array):
+    # Define collection reference
+    company_info_ref = db.collection("company_info")
+    users_ref = db.collection("users")  # Assuming users collection exists
 
-    connector = Connector()
-    
-    def get_conn():
-        try:
-            conn = connector.connect(
-                "socs-415712:us-west1:socs-db",
-                "pymysql",
-                user="root",
-                password=db_password,
-                db="socs-db"
-            )
-            return conn
-        except Exception as conn_error:
-            print(f"Connection error: {conn_error}")
-            raise conn_error
+    # Get the user document based on user ID
+    user_id = st.session_state['userId']
+    user_doc = users_ref.document(user_id).get()
 
-    pool = sqlalchemy.create_engine(
-        "mysql+pymysql://",
-        creator=get_conn,
-    )
+    # Extract user email if user document exists, otherwise use None
+    user_email = user_doc.to_dict().get("email") if user_doc.exists else None
 
-    insert_stmt = sqlalchemy.text(
-        "INSERT INTO company_info (id, company_name, company_address) VALUES (:id, :company_name, :company_address)",
-    )
+    for item in unique_array:
+        if len(item) == 2:
+            company_name, company_address = item
 
-    select_stmt = sqlalchemy.text(
-        "SELECT COUNT(*) FROM company_info WHERE company_address = :company_address"
-    )
+            # Query Firestore to check if the address already exists
+            existing_docs = company_info_ref.where("company_address", "==", company_address.strip()).limit(1).get()
 
-    with pool.connect() as db_conn:
-        db_conn.execute(sqlalchemy.text(
-            "CREATE TABLE IF NOT EXISTS company_info (id INT AUTO_INCREMENT PRIMARY KEY, company_name VARCHAR(200), company_address VARCHAR(200))"
-        ))
+            # If the address does not exist, insert the new record
+            if len(existing_docs) == 0:
+                # Add the user information along with company data
+                company_info_ref.add({
+                    "company_name": company_name.strip(),
+                    "company_address": company_address.strip(),
+                    "quary_industry": industry, 
+                    "query_location": location,
+                    "query_by": user_email
+                })
+            else:
+                print(f"Address {company_address} already exists in the database.")
 
-        for item in unique_array:
-            if len(item) == 2:
-                company_name, company_address = item
+    # Fetch and print all documents in the collection (optional)
+    data = [doc.to_dict() for doc in company_info_ref.get()]
+    print(data)
 
-                # Check if the address already exists
-                existing_count = db_conn.execute(select_stmt, {"company_address": company_address.strip()}).scalar()
-
-                # If the address does not exist, insert the new record
-                if existing_count == 0:
-                    db_conn.execute(
-                        insert_stmt,
-                        {"id": None, "company_name": company_name.strip(), "company_address": company_address.strip()}
-                    )
-                else:
-                    print(f"Address {company_address} already exists in the database.")
-
-        db_conn.commit()
-        data = db_conn.execute(sqlalchemy.text("SELECT * FROM company_info;")).fetchall()
-        print(data)
-        return True
+    return True
 
 
 def initialize_pydeck_map(lat_lon_list):
@@ -306,7 +286,7 @@ def initialize_pydeck_map(lat_lon_list):
     return r
 
 # initiate assistant ai response
-def get_chat_response(user_input, client, selected_model):
+def get_chat_response(db, client, selected_model):
     
     dialogue = []
     dialogue.append({"role": "system", "content": system_message})
@@ -333,7 +313,7 @@ def get_chat_response(user_input, client, selected_model):
             if function_name == "get_companies":
                 function_args = json.loads(response_message.function_call.arguments)
                 print(f"\nfunction call arguments: {function_args}")
-                response, pydeck_map = get_companies(user_input, **function_args)
+                response, pydeck_map = get_companies(db, **function_args)
                 
                 return response, pydeck_map
             else: 
@@ -345,7 +325,7 @@ def get_chat_response(user_input, client, selected_model):
     
     return response_message.content, None
 
-def run_app(username=None):
+def run_app(db):
 
     # Replicate Credentials
     with st.sidebar:
@@ -379,8 +359,8 @@ def run_app(username=None):
             col.image(url, width=150)
 
     # Welcome message
-    if username:
-        st.title(f":wave: Welcome, {username}!")
+    if st.session_state.get('username'):
+        st.title(f":wave: Welcome, {st.session_state.get('username')}!")
 
     # Store LLM generated responses
     if "messages" not in st.session_state.keys():
@@ -410,7 +390,7 @@ def run_app(username=None):
         with st.chat_message("assistant", avatar="🍃"):
             response_placeholder = st.empty()
             map_placeholder = st.empty()
-            response, pydeck_map = get_chat_response(user_input=query, client=client, selected_model=selected_model)
+            response, pydeck_map = get_chat_response(db, client=client, selected_model=selected_model)
             response_placeholder.markdown(response, unsafe_allow_html=True)
             if pydeck_map is not None:
                 map_placeholder.pydeck_chart(pydeck_map)

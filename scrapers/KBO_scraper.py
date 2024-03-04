@@ -40,7 +40,7 @@ def download_pdf(pdf_url, filename, driver):
             file.write(response.content)
     except Exception as e:
         print(f"no pdf file found: {e}")
-        driver.close()
+        driver.quit()
         print("driver is closed")
     
 def handle_location_input(driver, option, municipality_input):
@@ -115,7 +115,7 @@ def extract_ondernemingsnummers(driver):
         return ondernemingsnummers
     except Exception as e:
         print(f"error when retrieving 'ondernemersnummers': {e}")
-        driver.close()
+        driver.quit()
         print("driver is closed")
 
 def check_activities(ondernemingsnummer, nace_code):
@@ -190,7 +190,7 @@ def main(locations, option, nace_codes):
         print(f"Critical error, stopping the scraper: {e}")
     finally:
         # driver.quit()
-        driver.close()
+        driver.quit()
         print("driver is closed")
 
 
