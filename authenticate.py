@@ -4,7 +4,38 @@ from firebase_admin import credentials, firestore, auth, storage
 import company_search_bot
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
+import extra_streamlit_components as stx
 import json
+
+@st.cache_resource(experimental_allow_widgets=True)
+# Initialize CookieManager
+def get_manager():
+    return stx.CookieManager()
+
+cookie_manager = get_manager()
+
+# When setting login status, generate and set a session token as a cookie
+def set_login_status(user_doc):
+    cookie_manager.set(cookie="session_token", val=user_doc)
+    current_params = st.query_params
+    current_params['user'] = user_doc
+
+# When checking login status, use session token from the cookie
+def check_login_status():
+    user_id = cookie_manager.get(cookie="session_token")
+    print(f"user id after check: {user_id}")
+    if user_id:
+        return True
+    else:
+        return False
+
+# When logging out, clear the session token from the cookie
+def clear_login_status():
+    user_id = cookie_manager.get(cookie="session_token")
+    print(f"user id for logout: {user_id}")
+    if user_id:
+        print("***")
+        cookie_manager.delete("session_token")
 
 # Function to load CSS from a file and inject it into the app
 def load_css(file_name):
@@ -24,7 +55,6 @@ if not firebase_admin._apps:
 else:
     firebase_admin.get_app(name='[DEFAULT]')
 
-
 # Firestore Database
 db = firestore.client()
 
@@ -32,18 +62,7 @@ db = firestore.client()
 bucket = storage.bucket()
 
 # Constants
-MIN_PASSWORD_LENGTH = 6
-
-# Initialize session state
-if 'logged_in' not in st.session_state:
-    st.session_state['logged_in'] = False
-
-# Page switch function
-def switch_to_app_page(userId=None, username=None):
-    st.session_state['logged_in'] = True
-    st.session_state['userId'] = userId
-    st.session_state['username'] = username
-    st.rerun()
+MIN_PASSWORD_LENGTH = 6   
 
 def switch_to_login_page():
     st.session_state['logged_in'] = False
@@ -181,13 +200,15 @@ def show_auth():
                 user = auth.get_user_by_email(email)
                 # Check if email is verified
                 if user.email_verified:
+
+                    set_login_status(user.uid)
                     # Add user data to Firestore
                     user_data = {'username': user.display_name, 'email': user.email, 'email_verified': user.email_verified}
                     db.collection('users').document(user.uid).set(user_data)
-
+                    
                     # User data fetch from Firestore is assumed to be done here
                     st.sidebar.success(f'Succesvol ingelogd', icon='✅')
-                    switch_to_app_page(user.uid, user.display_name)  # Assuming 'display_name' is set to the username
+                    st.rerun()
                 else:
                     st.sidebar.warning('Verifieer je e-mailadres om in te loggen.', icon='📧')
             except firebase_admin.auth.UserNotFoundError:
@@ -198,10 +219,11 @@ def show_auth():
     load_welcome()
 
 
-if st.session_state.logged_in:
+if check_login_status():
     company_search_bot.run_app(db=db)
     if st.sidebar.button('Log out'):
-        switch_to_login_page()  # Switch back to the login page on logout
+        clear_login_status()
+        st.rerun()
 else:
     show_auth()
 

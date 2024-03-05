@@ -15,6 +15,7 @@ import numpy as np
 import googlemaps
 import pandas as pd
 import pydeck as pdk
+import datetime
 
 __import__('pysqlite3')
 import sys
@@ -37,13 +38,8 @@ function_get_companies = [
             "type": "object",
             "properties": {
                 "location": {
-                    "type": "array",
-                        "items": {
-                            "type": "string"
-                        },
-                        "minItems": 1,
-                        "maxItems": 5,
-                        "description": "If the user specifies a broader region than a city, lists the 5 largest cities in that region",
+                    "type": "string",
+                    "description": "This refers to the locaion in which the user intends to find businesses. With the initial letter of the location consistently capitalized."
                 },
                 "area": {
                     "type": "boolean",
@@ -224,36 +220,56 @@ def add_to_db(db, industry, location, unique_array):
     company_info_ref = db.collection("company_info")
     users_ref = db.collection("users")  # Assuming users collection exists
 
-    # Get the user document based on user ID
-    user_id = st.session_state['userId']
-    user_doc = users_ref.document(user_id).get()
-
-    # Extract user email if user document exists, otherwise use None
+    user_doc = users_ref.document(st.query_params['user']).get()
     user_email = user_doc.to_dict().get("email") if user_doc.exists else None
 
     for item in unique_array:
         if len(item) == 2:
             company_name, company_address = item
 
-            # Query Firestore to check if the address already exists
+            # Check if the company address already exists in the database
             existing_docs = company_info_ref.where("company_address", "==", company_address.strip()).limit(1).get()
 
-            # If the address does not exist, insert the new record
             if len(existing_docs) == 0:
-                # Add the user information along with company data
+                # If the address does not exist, insert a new record
                 company_info_ref.add({
                     "company_name": company_name.strip(),
                     "company_address": company_address.strip(),
-                    "quary_industry": industry, 
-                    "query_location": location,
-                    "query_by": user_email
+                    "queries": [{
+                        "industry": industry,
+                        "location": location,
+                        "users": [user_email],
+                        "timestamp": datetime.datetime.now()
+                    }]
                 })
             else:
-                print(f"Address {company_address} already exists in the database.")
+                for doc in existing_docs:
+                    doc_ref = company_info_ref.document(doc.id)
+                    doc_data = doc.to_dict()
+                    query_found = False
 
-    # Fetch and print all documents in the collection (optional)
-    data = [doc.to_dict() for doc in company_info_ref.get()]
-    print(data)
+                    # Iterate through existing queries to find a match
+                    for query in doc_data["queries"]:
+                        if query["industry"] == industry and query["location"] == location:
+                            query_found = True
+                            # Add the new user if they're not already in the list
+                            if user_email not in query["users"]:
+                                query["users"].append(user_email)
+                                # Update the timestamp to reflect the latest query
+                                query["timestamp"] = datetime.datetime.now()
+                            break
+
+                    if not query_found:
+                        # If no matching query is found, add a new one
+                        doc_data["queries"].append({
+                            "industry": industry,
+                            "location": location,
+                            "users": [user_email],
+                            "timestamp": datetime.datetime.now()
+                        })
+
+                    # Update the document with the modified or new query data
+                    doc_ref.update({"queries": doc_data["queries"]})
 
     return True
 
@@ -359,8 +375,12 @@ def run_app(db):
             col.image(url, width=150)
 
     # Welcome message
-    if st.session_state.get('username'):
-        st.title(f":wave: Welcome, {st.session_state.get('username')}!")
+    users_ref = db.collection("users")
+    current_params = st.query_params
+    user_doc = users_ref.document(current_params.get('user')).get()
+    username = user_doc.to_dict().get("username") if user_doc.exists else None
+    if user_doc.exists:
+        st.title(f":wave: Welcome, {username}!")
 
     # Store LLM generated responses
     if "messages" not in st.session_state.keys():
