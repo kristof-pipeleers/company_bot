@@ -34,6 +34,8 @@ def check_login_status():
 # When logging out, clear the session token from the cookie
 def clear_login_status():
     token = cookie_manager.get(cookie="session_token")
+    current_params = st.query_params
+    current_params.clear()
     print(f"user id for logout: {token}")
     if token:
         print("***")
