@@ -6,6 +6,7 @@ from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
 import extra_streamlit_components as stx
 import json
+import uuid
 
 @st.cache_resource(experimental_allow_widgets=True)
 # Initialize CookieManager
@@ -16,24 +17,25 @@ cookie_manager = get_manager()
 
 # When setting login status, generate and set a session token as a cookie
 def set_login_status(user_doc):
-    cookie_manager.set(cookie="session_token", val=user_doc)
+    token = str(uuid.uuid4())
+    cookie_manager.set(cookie="session_token", val=token)
     current_params = st.query_params
     current_params['user'] = user_doc
 
 # When checking login status, use session token from the cookie
 def check_login_status():
-    user_id = cookie_manager.get(cookie="session_token")
-    print(f"user id after check: {user_id}")
-    if user_id:
+    token = cookie_manager.get(cookie="session_token")
+    print(f"token after check: {token}")
+    if token:
         return True
     else:
         return False
 
 # When logging out, clear the session token from the cookie
 def clear_login_status():
-    user_id = cookie_manager.get(cookie="session_token")
-    print(f"user id for logout: {user_id}")
-    if user_id:
+    token = cookie_manager.get(cookie="session_token")
+    print(f"user id for logout: {token}")
+    if token:
         print("***")
         cookie_manager.delete("session_token")
 
