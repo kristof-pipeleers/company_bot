@@ -47,7 +47,8 @@ def set_login_status(user):
 
 def clear_login_status():
     """Clear the login session."""
-    st.query_params.clear()
+    current_params = st.query_params
+    current_params.clear()
     st.rerun()
 
 def check_login_status():
