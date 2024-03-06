@@ -18,7 +18,7 @@ SECRET_KEY = st.secrets["SECRET_JWT"]
 
 def create_jwt_token(user):
     """Create a JWT token with an expiration time."""
-    expiration = datetime.datetime.utcnow() + datetime.timedelta(minutes=30)  # 5 minutes from now
+    expiration = datetime.datetime.utcnow() + datetime.timedelta(minutes=2)  # 5 minutes from now
     payload = {
         'uid': user.uid,
         'exp': expiration
