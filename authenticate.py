@@ -228,7 +228,7 @@ print(uid)
 if uid:
     company_search_bot.run_app(db=db, uid=uid)
     if st.sidebar.button('Log out'):
-        clear_login_status(uid)
+        clear_login_status()
         st.rerun()
 else:
     show_auth()
