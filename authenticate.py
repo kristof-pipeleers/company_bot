@@ -7,39 +7,54 @@ from sendgrid.helpers.mail import Mail
 import extra_streamlit_components as stx
 import json
 import uuid
+import jwt
+import datetime
+import secrets
 
-@st.cache_resource(experimental_allow_widgets=True)
 # Initialize CookieManager
 def get_manager():
     return stx.CookieManager()
 
 cookie_manager = get_manager()
 
-# When setting login status, generate and set a session token as a cookie
-def set_login_status(user_doc):
-    token = str(uuid.uuid4())
-    cookie_manager.set(cookie="session_token", val=token)
-    current_params = st.query_params
-    current_params['user'] = user_doc
+# Function to generate JWT token with additional information
+def generate_jwt_token(user):
+    payload = {
+        'doc_id': user.uid,
+        'email': user.email,
+        'username': user.display_name,
+        'exp': datetime.datetime.utcnow() + datetime.timedelta(hours=1)
+    }
+    return jwt.encode(payload, st.secrets["SECRET_JWT"], algorithm='HS256')
 
-# When checking login status, use session token from the cookie
+# Function to verify JWT token
+def verify_jwt_token(token):
+    try:
+        payload = jwt.decode(token, st.secrets["SECRET_JWT"], algorithms=['HS256'])
+        return payload
+    except jwt.ExpiredSignatureError:
+        return None  # Token has expired
+    except jwt.InvalidTokenError:
+        return None  # Token is invalid
+
+# When setting login status, generate and set a JWT token as a cookie
+def set_login_status(user):
+    jwt_token = generate_jwt_token(user)
+    cookie_manager.set(cookie="jwt_token", val=jwt_token)
+
+# When checking login status, use JWT token from the cookie
 def check_login_status():
-    token = cookie_manager.get(cookie="session_token")
-    print(f"token after check: {token}")
-    if token:
-        return True
-    else:
-        return False
+    jwt_token = cookie_manager.get(cookie="jwt_token")
+    print(jwt_token)
+    if jwt_token:
+        decoded_token = verify_jwt_token(jwt_token)
+        if decoded_token:
+            return decoded_token
+    return None
 
-# When logging out, clear the session token from the cookie
+# When logging out, clear the JWT token from the cookie
 def clear_login_status():
-    token = cookie_manager.get(cookie="session_token")
-    current_params = st.query_params
-    current_params.clear()
-    print(f"user id for logout: {token}")
-    if token:
-        print("***")
-        cookie_manager.delete("session_token")
+    cookie_manager.delete("jwt_token")
 
 # Function to load CSS from a file and inject it into the app
 def load_css(file_name):
@@ -205,7 +220,7 @@ def show_auth():
                 # Check if email is verified
                 if user.email_verified:
 
-                    set_login_status(user.uid)
+                    set_login_status(user)
                     # Add user data to Firestore
                     user_data = {'username': user.display_name, 'email': user.email, 'email_verified': user.email_verified}
                     db.collection('users').document(user.uid).set(user_data)
@@ -223,7 +238,8 @@ def show_auth():
     load_welcome()
 
 
-if check_login_status():
+decoded_token = check_login_status()
+if decoded_token:
     company_search_bot.run_app(db=db)
     if st.sidebar.button('Log out'):
         clear_login_status()
