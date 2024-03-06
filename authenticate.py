@@ -4,57 +4,61 @@ from firebase_admin import credentials, firestore, auth, storage
 import company_search_bot
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
-import extra_streamlit_components as stx
+from jinja2 import Environment, FileSystemLoader
 import json
-import uuid
 import jwt
 import datetime
-import secrets
 
-# Initialize CookieManager
-def get_manager():
-    return stx.CookieManager()
+file_loader = FileSystemLoader('.')
+env = Environment(loader=file_loader)
+template = env.get_template('welcome_message.jinja2')
+welcome_message = template.render()
 
-cookie_manager = get_manager()
+SECRET_KEY = st.secrets["SECRET_JWT"]
 
-# Function to generate JWT token with additional information
-def generate_jwt_token(user):
+def create_jwt_token(user):
+    """Create a JWT token with an expiration time."""
+    expiration = datetime.datetime.utcnow() + datetime.timedelta(minutes=30)  # 5 minutes from now
     payload = {
-        'doc_id': user.uid,
-        'email': user.email,
-        'username': user.display_name,
-        'exp': datetime.datetime.utcnow() + datetime.timedelta(hours=1)
+        'uid': user.uid,
+        'exp': expiration
     }
-    return jwt.encode(payload, st.secrets["SECRET_JWT"], algorithm='HS256')
+    token = jwt.encode(payload, SECRET_KEY, algorithm="HS256")
+    return token
 
-# Function to verify JWT token
 def verify_jwt_token(token):
+    """Verify the JWT token is valid and not expired."""
     try:
-        payload = jwt.decode(token, st.secrets["SECRET_JWT"], algorithms=['HS256'])
-        return payload
+        # Decode the token
+        payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+        return payload.get('uid')  # Return the payload if the token is valid
     except jwt.ExpiredSignatureError:
-        return None  # Token has expired
+        # Token has expired
+        return None
     except jwt.InvalidTokenError:
-        return None  # Token is invalid
+        # Token is invalid
+        return None
 
-# When setting login status, generate and set a JWT token as a cookie
 def set_login_status(user):
-    jwt_token = generate_jwt_token(user)
-    cookie_manager.set(cookie="jwt_token", val=jwt_token)
+    """Store JWT token in the session state upon successful login."""
+    token = create_jwt_token(user)
+    current_params = st.query_params
+    current_params['session_token'] = token
 
-# When checking login status, use JWT token from the cookie
-def check_login_status():
-    jwt_token = cookie_manager.get(cookie="jwt_token")
-    print(jwt_token)
-    if jwt_token:
-        decoded_token = verify_jwt_token(jwt_token)
-        if decoded_token:
-            return decoded_token
-    return None
-
-# When logging out, clear the JWT token from the cookie
 def clear_login_status():
-    cookie_manager.delete("jwt_token")
+    """Clear the login session."""
+    st.query_params.clear()
+    st.rerun()
+
+def check_login_status():
+    """Check if the user is logged in by verifying the JWT token."""
+    current_params = st.query_params
+    token = current_params.get('session_token')
+    print(token)
+    if token:
+        return verify_jwt_token(token)
+    else:
+        return None
 
 # Function to load CSS from a file and inject it into the app
 def load_css(file_name):
@@ -90,27 +94,7 @@ def switch_to_login_page():
 def load_welcome():
     # Welcome Page Content
     st.title("🍃 advAI:green[CE]")
-    st.markdown("""
-        ### Wat kan ik voor je doen?
-        
-        - :office: **Zoek naar bedrijven:** Vind bedrijven in verschillende sectoren en locaties.
-        - 📍 **Geomapping:** Ontvang een overzicht van de locaties waar de bedrijven die u zoekt zich bevinden.
-        - 🦋 **Waardeketenmapping:** :red[Coming soon...]
-        
-        ### Hoe te beginnen?
-        
-        1. **Maak een account aan** of **log in** via de zijbalk.
-        2. Volg de eenvoudige instructies om je zoekopdrachten te starten.
-        3. Ontvang resultaten in enkele seconden.
-        
-        ### Waarom deze chatbot gebruiken?
-        
-        - 💡 **Snelle en nauwkeurige informatie:** Bespaar tijd met snelle en relevante zoekresultaten.
-        - 📝 **Eenvoudige interactie:** Gebruiksvriendelijke interface met stapsgewijze begeleiding.
-        - 📡 **Externe data bronnen:** De chatbot maakt gebruik van meerdere databronnen en combineert de resultaten tot het optimale antwoord.
-        
-        Begin nu om de kracht van 🍃 :orange[advAI]:green[CE] te ervaren! 🚀
-    """, unsafe_allow_html=True)
+    st.markdown(welcome_message, unsafe_allow_html=True)
     
     image_urls = [
         'images/werecircle-logo.png',
@@ -205,6 +189,7 @@ def show_auth():
                 try:
                     user = auth.create_user(email=email, password=password, display_name=username)
                     # Send verification email
+                    
                     verification_link = auth.generate_email_verification_link(email, action_code_settings=None)
                     send_custom_email(email=email, username=username, link=verification_link)
                     st.sidebar.success('Je account is succesvol aangemaakt! Controleer je inbox om je e-mail te verifiëren.', icon='✅')
@@ -238,11 +223,12 @@ def show_auth():
     load_welcome()
 
 
-decoded_token = check_login_status()
-if decoded_token:
-    company_search_bot.run_app(db=db)
+uid = check_login_status()
+print(uid)
+if uid:
+    company_search_bot.run_app(db=db, uid=uid)
     if st.sidebar.button('Log out'):
-        clear_login_status()
+        clear_login_status(uid)
         st.rerun()
 else:
     show_auth()
