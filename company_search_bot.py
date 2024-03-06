@@ -341,7 +341,7 @@ def get_chat_response(db, client, selected_model):
     
     return response_message.content, None
 
-def run_app(db):
+def run_app(db, uid):
 
     # Replicate Credentials
     with st.sidebar:
@@ -376,8 +376,7 @@ def run_app(db):
 
     # Welcome message
     users_ref = db.collection("users")
-    current_params = st.query_params
-    user_doc = users_ref.document(current_params.get('user')).get()
+    user_doc = users_ref.document(uid).get()
     username = user_doc.to_dict().get("username") if user_doc.exists else None
     if user_doc.exists:
         st.title(f":wave: Welcome, {username}!")
