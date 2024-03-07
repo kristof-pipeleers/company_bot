@@ -18,7 +18,7 @@ SECRET_KEY = st.secrets["SECRET_JWT"]
 
 def create_jwt_token(user):
     """Create a JWT token with an expiration time."""
-    expiration = datetime.datetime.utcnow() + datetime.timedelta(minutes=2)  # 5 minutes from now
+    expiration = datetime.datetime.utcnow() + datetime.timedelta(minutes=30)
     payload = {
         'uid': user.uid,
         'exp': expiration
@@ -55,7 +55,6 @@ def check_login_status():
     """Check if the user is logged in by verifying the JWT token."""
     current_params = st.query_params
     token = current_params.get('session_token')
-    print(token)
     if token:
         return verify_jwt_token(token)
     else:

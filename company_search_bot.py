@@ -16,6 +16,7 @@ import googlemaps
 import pandas as pd
 import pydeck as pdk
 import datetime
+import jwt
 
 __import__('pysqlite3')
 import sys
@@ -219,8 +220,9 @@ def add_to_db(db, industry, location, unique_array):
     # Define collection reference
     company_info_ref = db.collection("company_info")
     users_ref = db.collection("users")  # Assuming users collection exists
-
-    user_doc = users_ref.document(st.query_params['user']).get()
+    current_params = st.query_params
+    token = jwt.decode(current_params.get('session_token'), options={"verify_signature": False})
+    user_doc = users_ref.document(token.get("uid")).get()
     user_email = user_doc.to_dict().get("email") if user_doc.exists else None
 
     for item in unique_array:
