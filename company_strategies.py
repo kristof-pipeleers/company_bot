@@ -55,7 +55,7 @@ def google_search_engine(question: str, num_search_results: int):
         while len(items_to_return) < 10:
             items = get_urls(question, start_item, num)
             for item in items:
-                print(f"Query: {question}\nURL: {item['link']}\nSnippet: {item['snippet']}")
+                # print(f"Query: {question}\nURL: {item['link']}\nSnippet: {item['snippet']}")
                 # choice = input("Voeg deze URL toe aan de resultaten? (j/n/e): ")
                 # if choice.lower() == "j":
                 items_to_return.append(item['link'])
@@ -151,7 +151,7 @@ def get_result(docs, company):
         
         query = f"Judge whether the following company activities are true for the company {company}: Raw Material Extraction, Production of Refined Materials, Production of Synthetic Materials, Part, Component, Product Distribution - B2B, Product Distribution - B2C. Antwoord met een json-dict: {format_instructions}"
         result = qa({"query": query})
-        print(result['result'].strip())
+        # print(result['result'].strip())
         result_as_dict = output_parser.parse(result['result'].strip())
         print(f"\nAsnwer for {company}: {result_as_dict}")
 
