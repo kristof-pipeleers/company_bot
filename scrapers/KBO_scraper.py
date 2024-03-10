@@ -10,6 +10,7 @@ import numpy as np
 import os
 from datetime import datetime
 from selenium.common.exceptions import NoSuchElementException
+import streamlit as st
 
 def choose_location(locations):
     print(f"There are multiple locations for the specified location:")
@@ -143,20 +144,25 @@ def check_activities(ondernemingsnummer, nace_code):
 def kbo_scraper(locations: List[str], nace_codes: List[str], option: bool, driver):
     start_url = "https://kbopub.economie.fgov.be/kbopub/zoekactiviteitform.html"
     all_company_data = []
-    for location in locations:
-        for nace_code in nace_codes:
-            try:
-                driver.get(start_url)
+    with st.status("Retrieving company information from KBO database ... (this may take a few minutes)", expanded=True) as status:
+        for location in locations:
+            i = 0
+            for nace_code in nace_codes:
+                i = i+1
+                st.write(f"Retrieve relevant companies for NACE code {nace_code}...   {i}/{len(nace_codes)}")
                 try:
-                    temp_pdf_filename = f'temp_{nace_code}_{location}_{datetime.now().strftime("%Y%m%d%H%M%S")}.pdf'
-                    company_data_array = scrape_data(nace_code, location, temp_pdf_filename, option, driver)
-                    all_company_data.extend(company_data_array)
-                finally:
-                    os.remove(temp_pdf_filename)
-            except Exception as e:
-                print(f"An error occurred: {e}")
-                continue
-    return all_company_data
+                    driver.get(start_url)
+                    try:
+                        temp_pdf_filename = f'temp_{nace_code}_{location}_{datetime.now().strftime("%Y%m%d%H%M%S")}.pdf'
+                        company_data_array = scrape_data(nace_code, location, temp_pdf_filename, option, driver)
+                        all_company_data.extend(company_data_array)
+                    finally:
+                        os.remove(temp_pdf_filename)
+                except Exception as e:
+                    print(f"An error occurred: {e}")
+                    continue
+        status.update(label="Complete!", state="complete", expanded=False)
+        return all_company_data
 
 def print_usage_and_exit():
     print("Usage: python KBO_scraper.py <arg1> <arg2> <arg3>")

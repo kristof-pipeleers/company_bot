@@ -1,7 +1,7 @@
 import streamlit as st
 import firebase_admin
 from firebase_admin import credentials, firestore, auth, storage
-import company_search_bot
+import LLM_processes
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
 from jinja2 import Environment, FileSystemLoader
@@ -18,7 +18,7 @@ SECRET_KEY = st.secrets["SECRET_JWT"]
 
 def create_jwt_token(user):
     """Create a JWT token with an expiration time."""
-    expiration = datetime.datetime.utcnow() + datetime.timedelta(minutes=30)
+    expiration = datetime.datetime.utcnow() + datetime.timedelta(hours=1)
     payload = {
         'uid': user.uid,
         'exp': expiration
@@ -33,10 +33,8 @@ def verify_jwt_token(token):
         payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
         return payload.get('uid')  # Return the payload if the token is valid
     except jwt.ExpiredSignatureError:
-        # Token has expired
         return None
     except jwt.InvalidTokenError:
-        # Token is invalid
         return None
 
 def set_login_status(user):
@@ -49,7 +47,6 @@ def clear_login_status():
     """Clear the login session."""
     current_params = st.query_params
     current_params.clear()
-    st.rerun()
 
 def check_login_status():
     """Check if the user is logged in by verifying the JWT token."""
@@ -226,7 +223,7 @@ def show_auth():
 uid = check_login_status()
 print(uid)
 if uid:
-    company_search_bot.run_app(db=db, uid=uid)
+    LLM_processes.run_app(db=db, uid=uid)
     if st.sidebar.button('Log out'):
         clear_login_status()
         st.rerun()
