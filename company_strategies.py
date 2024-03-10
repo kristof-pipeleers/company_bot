@@ -4,8 +4,7 @@ import math
 import os
 from langchain_openai import OpenAI
 from langchain.chains import RetrievalQA
-from langchain_community.document_loaders.csv_loader import CSVLoader
-from langchain_community.document_loaders.base import Document
+from langchain.docstore.document import Document
 from langchain_community.vectorstores import Chroma
 from langchain_openai import OpenAIEmbeddings
 from langchain.output_parsers import ResponseSchema

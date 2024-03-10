@@ -147,7 +147,7 @@ def kbo_scraper(locations: List[str], nace_codes: List[str], option: bool, drive
             i = 0
             for nace_code in nace_codes:
                 i = i+1
-                st.write(f"Retrieve relevant companies for NACE code {nace_code}...   {i}/{len(nace_codes)}")
+                st.write(f"Retrieve relevant companies for NACE code {nace_code}...   :orange[{i}/{len(nace_codes)}]")
                 try:
                     driver.get(start_url)
                     try:
