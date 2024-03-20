@@ -6,9 +6,9 @@ import json
 from companies import get_companies
 from company_strategies import get_company_strategies
 
-__import__('pysqlite3')
-import sys
-sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
+# __import__('pysqlite3')
+# import sys
+# sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
 
 file_loader = FileSystemLoader('.')
 env = Environment(loader=file_loader)
@@ -16,23 +16,103 @@ template = env.get_template('system_message.jinja2')
 system_message = template.render()
 
 functions = [
+    # {
+    #     "name": "get_value_chain",
+    #     "description": "Does a circular value chain analysis by retrieving a list of companies and their location",
+    #     "parameters": {
+    #         "type": "object",
+    #         "properties": {
+    #             "companies": {
+    #                 "type": "array",
+    #                 "description": "This is a list of companies retrieved from the user's query. It takes always the list of companies from the most recent messagee.",
+    #                 "items": {
+    #                     "type": "string"
+    #                 }
+    #             },
+    #             "location": {
+    #                 "type": "string",
+    #                 "description": "This refers to the location that the user is talking about in the messages."
+    #             }
+    #         },
+    #         "required": [
+    #             "companies",
+    #             "location"
+    #         ]
+    #     }
+    # },
+    { 
+        "name": "get_value_chain_mapping",
+        "description": "Deze functie beschrijft de verschillende stappen in de waardeketen van een gespecificeerd eindproduct.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "product": {
+                    "type": "string",
+                    "description": "De naam of identificatie van het product waarvoor de waardeketenmapping wordt aangevraagd."
+                },
+                "raw materials": {
+                    "type": "string",
+                    "description": "Beschrijving van de initiële grondstoffen en hun bronnen voor het product."
+                },
+                "refined materials": {
+                    "type": "string",
+                    "description": "Details over de verwerking of raffinage die de ruwe materialen ondergaan voordat ze in het product worden gebruikt."
+                },
+                "synthetic materials": {
+                    "type": "string",
+                    "description": "Informatie over eventuele synthetische of composietmaterialen die betrokken zijn bij het product, inclusief hun creatieproces."
+                },
+                "part": {
+                    "type": "string",
+                    "description": "Beschrijving van verschillende onderdelen die worden samengesteld om het product te creëren."
+                },
+                "component": {
+                    "type": "string",
+                    "description": "Informatie over componenten die essentieel zijn voor de functionaliteit van het product, inclusief hun ontwerp en fabricage."
+                },
+                "product manufacturer": {
+                    "type": "string", 
+                    "description": "Details over het productieproces, inclusief de schaal, locatie en gebruikte technologie."
+                },
+                "product distribution - B2B": {
+                    "type": "string",
+                "description": "Identificeer en beschrijf de belangrijkste sectoren die verband houden met het product in de fase van Distributie van producten - zakelijk naar zakelijk binnen de waardeketen."
+                },
+                "product distribution - B2C": {
+                    "type": "string",
+                    "description": "Inzicht in de directe distributiestrategieën naar de consument, inclusief detailhandel en e-commerceplatforms."
+                }
+            },
+            "required": [
+                "product",
+                "raw materials",
+                "refined materials",
+                "synthetic materials",
+                "part",
+                "component",
+                "product manufacturer",
+                "product distribution - B2B",
+                "product distribution - B2C"
+            ]
+        }
+    },
     {
         "name": "get_companies",
-        "description": "retrieves the location and industry of the user question",
+        "description": "Deze functie identificeert en geeft details over bedrijven binnen een specifieke locatie en industrie. Het is ontworpen om zakelijk onderzoek, identificatie van partnerschappen, marktanalyse en concurrentie-intelligentie te vergemakkelijken. Door zich te richten op geografische en sectorspecifieke parameters, kunnen gebruikers gerichte informatie verkrijgen over potentiële leveranciers, concurrenten of partners. De functie maakt gebruik van gelokaliseerde industriële gegevens en bedrijfsprofielen om bruikbare inzichten te leveren die zijn afgestemd op de specifieke behoeften van de gebruiker.",
         "parameters": {
             "type": "object",
             "properties": {
                 "location": {
                     "type": "string",
-                    "description": "This refers to the locaion in which the user intends to find businesses. With the initial letter of the location consistently capitalized."
+                    "description": " Het geografische interessegebied, dat kan variëren van een specifieke stad tot een breder gebied."
                 },
                 "area": {
                     "type": "boolean",
-                    "description": "This refers to the size of the location area. If the user literally states to search in a city without the adjacent areas, this parameter is false. If the user also explicitly asks for the city and the surrounding area, this parameter is true."
+                    "description": "Dit verwijst naar de grootte van het locatiegebied. Als de gebruiker letterlijk aangeeft te willen zoeken in een stad zonder de aangrenzende gebieden, is deze parameter onwaar. Als de gebruiker ook expliciet vraagt om de stad en het omliggende gebied, is deze parameter waar."
                 },
                 "industry": {
                     "type": "string",
-                    "description": "This refers to the sector in which the user intends to find businesses. This should be a detailed description of the sector and not a single word."
+                    "description": "De sector of industrie waarvoor bedrijfsinformatie wordt gezocht, gedetailleerd genoeg om onderscheid te maken van niet-gerelateerde velden."
                 }
             },
             "required": [
@@ -42,25 +122,6 @@ functions = [
             ]
         }
     },
-    {
-        "name": "get_value_chain",
-        "description": "retrieves the position in the value chain of a list of companies",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "companies": {
-                    "type": "array",
-                    "description": "This is a list of companies retrieved from the user's query.",
-                    "items": {
-                        "type": "string"
-                    }
-                }
-            },
-            "required": [
-                "companies"
-            ]
-        }
-    }
 ]   
 
 
@@ -80,11 +141,9 @@ def get_chat_response(db, client, selected_model):
         messages=dialogue,
         functions=functions,
         function_call="auto", 
-        temperature=0.9
+        temperature=0
     )
     response_message = response.choices[0].message
-
-    print(f"ID= {response.id}")
 
     try:   
         if response_message.function_call:
@@ -99,6 +158,11 @@ def get_chat_response(db, client, selected_model):
             # get value chain function call
             elif function_name == "get_value_chain":
                 response = get_company_strategies(**function_args)
+                return response, None
+            
+            elif function_name == "get_value_chain_mapping":
+                response = "<br>".join([f":green[**{key.title().replace('_', ' ')}**]: {value}" for key, value in function_args.items()])
+                response += f"<br><br>Voor welke stap in de waardeketen van :orange[{function_args['product']}] wil je een lijst van bedrijven? Geef de beschrijving van de stap uit de waardeketen en een locatie mee."
                 return response, None
             
             else: 
@@ -128,7 +192,7 @@ def run_app(db, uid):
         os.environ['OPENAI_KEY'] = api_key
 
         st.subheader('🤖 Models')
-        selected_model = st.sidebar.selectbox('Kies een OpenAI-model', ['gpt-3.5-turbo-1106', 'gpt-4-1106-preview'], key='selected_model')
+        selected_model = st.sidebar.selectbox('Kies een OpenAI-model', ['gpt-3.5-turbo-0125', 'gpt-4-0125-preview'], key='selected_model')
         client = OpenAI(api_key=os.environ['OPENAI_KEY'])
 
         st.subheader('📖 Informatie')
@@ -152,7 +216,7 @@ def run_app(db, uid):
 
     # Store LLM generated responses
     if "messages" not in st.session_state.keys():
-        st.session_state.messages = [{"role": "assistant", "content": "Hoe kan ik u vandaag van dienst zijn?"}]
+        st.session_state.messages = [{"role": "assistant", "content": "Voor welk :orange[eindproduct] zal ik de verschillende stappen in de waardeketen beschrijven?"}]
 
     # Display or clear chat messages
     for message in st.session_state.messages:
@@ -164,7 +228,7 @@ def run_app(db, uid):
                 st.write(message["content"], unsafe_allow_html=True)
 
     def clear_chat_history():
-        st.session_state.messages = [{"role": "assistant", "content": "Hoe kan ik u vandaag van dienst zijn?"}]
+        st.session_state.messages = [{"role": "assistant", "content": "Voor welk :orange[eindproduct] zal ik de verschillende stappen in de waardeketen beschrijven?"}]
     st.sidebar.button('Clear Chat History', on_click=clear_chat_history)
 
     # User-provided prompt

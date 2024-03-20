@@ -143,6 +143,7 @@ def get_result(docs, company):
             ResponseSchema(name="product manufacturer", description="This parameter is true if context is about a product producer, assembler, Manufacturing firms, Production units assembling, Manufacturing, Constructing. This represents the combining of different components into a functional product, such as a toaster, bike, …"),
             ResponseSchema(name="product distribution - B2B", description="This parameter is true if context is about a wholesaler, distributor, Bulk suppliers, Trade distributors selling, renting, leasing, Distributing, Supplying, Providing. This represents all activities that allow the final user to gain access over the product."),
             ResponseSchema(name="product distribution - B2C", description="This parameter is true if context is about a seller, assembler, Retailers, Merchants selling, renting, leasing, Retailing, Offering. This represents all activities that allow the final user to gain access over the product."),
+            ResponseSchema(name="description", description="This parameter summarizes the entailed context of the company base on the occurrence in the value chain. This description should be around 50 words"),
         ]
 
         output_parser = StructuredOutputParser.from_response_schemas(response_schemas)
@@ -154,61 +155,40 @@ def get_result(docs, company):
         result_as_dict = output_parser.parse(result['result'].strip())
         print(f"\nAsnwer for {company}: {result_as_dict}")
 
-        return result_as_dict 
+        return result_as_dict
     
     except Exception as e:
         print(f"Error processing results for {company}: {e}")
         return {}
 
 
-def get_company_strategies(companies):
+def get_company_strategies(companies, location):
+    company_details_html = ""
 
-    strategies = {
-        'raw materials': [],
-        'refined materials': [],
-        'synthetic materials': [],
-        'part': [],
-        'component': [],
-        'product manufacturer': [],
-        'product distribution - B2B': [],
-        'product distribution - B2C': [],
-    }
-    
-    progress_text = "Operation in progress. Please wait."
-    my_bar = st.progress(0, text=progress_text)
+    progress_text = "Werking wordt uitgevoerd. Een ogenblik geduld alstublieft."
+    my_bar = st.progress(0)
 
     total_companies = len(companies)
     for index, company in enumerate(companies):
-        # Update the progress bar with the current progress
         current_progress = int((index / total_companies) * 100)
-        my_bar.progress(current_progress, text=f"Searching relevant information on the web for :orange[{company}] ...")
+        my_bar.progress(current_progress, text=f"Relevante informatie op het web zoeken voor :orange[{company}] ...")
 
-        # Your code for processing each company goes here
-        urls = google_search_engine(question=company, num_search_results=4)
-        docs = crawl_urls(urls)
-        result = get_result(docs, company)
-        for strategy, is_present in result.items():
-            is_present_bool = str(is_present).lower() == 'true'
-            if is_present_bool:
-                strategies[strategy].append(company)
+        # Simulate fetching data from web search (replace this with your actual logic)
+        urls = google_search_engine(question=f"{company} {location}", num_search_results=4)  # Assume this function is defined
+        docs = crawl_urls(urls)  # Assume this function is defined
+        result = get_result(docs, company)  # Assume this function is defined
 
-        # Update the progress bar for the next iteration
+        true_categories = [k for k, v in result.items() if str(v).lower() == 'true' and k != "description"]
+        if true_categories:
+            categories_str = ', '.join(true_categories)
+            description = result.get('description', 'No description provided.')
+            company_details_html += f"<details><summary><b>{company}</b>: {categories_str}</summary><p><b>Description:</b> {description}</p></details>"
+
         if index == total_companies - 1:
-            # Complete the progress bar when processing the last company
-            my_bar.progress(100, text="Operation complete.")
+            my_bar.progress(100, text="Operatie voltooid.")
 
-    # Optionally, you can clear the progress bar here if you don't want it to stay
-    my_bar.empty()
-    
-    visualization_strs = []
-    for category, companies in strategies.items():
-        companies_str = ', '.join(companies) if companies else 'None'
-        visualization_strs.append(f"<strong>{category}</strong>: {companies_str}<br>")
+    my_bar.empty()  # Hide the progress bar after completion
 
-    visualization = ''.join(visualization_strs)
-
-    return visualization
-
-
+    return company_details_html
 
 

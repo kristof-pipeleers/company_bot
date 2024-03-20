@@ -4,7 +4,7 @@
 
 - :office: **Zoek naar bedrijven:** Vind bedrijven in verschillende sectoren en locaties.
 - 📍 **Geomapping:** Ontvang een overzicht van de locaties waar de bedrijven die u zoekt zich bevinden.
-- 🦋 **Waardeketenmapping:** _Coming soon..._
+- 🦋 **Waardeketenmapping:** Verkrijg een waardeketenmapping van de eerder gegenereerde bedrijven lijst of geef zelf een aantal bedrijven mee.
 
 ### Hoe te beginnen?
 

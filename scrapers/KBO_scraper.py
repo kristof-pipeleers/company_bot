@@ -4,13 +4,13 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
 from selenium import webdriver
 import requests
-from typing import List
 import sys
 import numpy as np
 import os
 from datetime import datetime
 from selenium.common.exceptions import NoSuchElementException
 import streamlit as st
+import time
 
 def choose_location(locations):
     print(f"There are multiple locations for the specified location:")
@@ -41,8 +41,6 @@ def download_pdf(pdf_url, filename, driver):
             file.write(response.content)
     except Exception as e:
         print(f"no pdf file found: {e}")
-        driver.quit()
-        print("driver is closed")
     
 def handle_location_input(driver, option, municipality_input):
     if option != 3:
@@ -109,16 +107,14 @@ def extract_ondernemingsnummers(driver):
                 break
 
             driver.find_element(By.LINK_TEXT, "Volgende").click()
-            WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.XPATH, '//tbody/tr')))
+            WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.XPATH, '//tbody/tr')))
         
         return ondernemingsnummers
     except Exception as e:
         print(f"error when retrieving 'ondernemersnummers': {e}")
-        driver.quit()
-        print("driver is closed")
+
 
 def check_activities(ondernemingsnummer, nace_code):
-    
     # The URL of the API endpoint
     base_url = "https://kbo.party/api/v1/enterprise/{}?key=NZD7E8OAEjnsoqHa"
 
@@ -130,37 +126,38 @@ def check_activities(ondernemingsnummer, nace_code):
 
     if response.status_code == 200:
         data = response.json()
+        # Convert the searched nace_code to string for prefix matching
+        search_nace_prefix = str(nace_code)
         for activity in data.get('activities', []):
-            if activity.get('nace') == int(nace_code):
+            # Convert each activity's nace code to string
+            activity_nace_str = str(activity.get('nace'))
+            # Check if the company's nace code starts with the searched nace code
+            if activity_nace_str.startswith(search_nace_prefix):
                 for address in data.get("addresses", []):
                     company_name = data.get('name')
                     company_nr = ondernemingsnummer
                     company_addr = f"{address.get('street')} {address.get('housenumber')}, {address.get('zip')} {address.get('municipality')}, Belgium"
                     return [company_name, company_addr]
-        return []            
+        return []          
 
-def kbo_scraper(locations: List[str], nace_codes: List[str], option: bool, driver):
+def kbo_scraper(location, nace_codes, option, driver):
     start_url = "https://kbopub.economie.fgov.be/kbopub/zoekactiviteitform.html"
     all_company_data = []
-    with st.status("Retrieving company information from KBO database ... (this may take a few minutes)", expanded=True) as status:
-        for location in locations:
-            i = 0
-            for nace_code in nace_codes:
-                i = i+1
-                st.write(f"Retrieve relevant companies for NACE code {nace_code}...   :orange[{i}/{len(nace_codes)}]")
-                try:
-                    driver.get(start_url)
-                    try:
-                        temp_pdf_filename = f'temp_{nace_code}_{location}_{datetime.now().strftime("%Y%m%d%H%M%S")}.pdf'
-                        company_data_array = scrape_data(nace_code, location, temp_pdf_filename, option, driver)
-                        all_company_data.extend(company_data_array)
-                    finally:
-                        os.remove(temp_pdf_filename)
-                except Exception as e:
-                    print(f"An error occurred: {e}")
-                    continue
-        status.update(label="Complete!", state="complete", expanded=False)
-        return all_company_data
+    for nace_code in nace_codes:
+        try:
+            driver.get(start_url)
+            time.sleep(1)
+            try:
+                temp_pdf_filename = f'temp_{nace_code}_{location}_{datetime.now().strftime("%Y%m%d%H%M%S")}.pdf'
+                company_data_array = scrape_data(nace_code, location, temp_pdf_filename, option, driver)
+                for company_data in company_data_array:
+                    all_company_data.append(company_data.tolist())
+            finally:
+                os.remove(temp_pdf_filename)
+        except Exception as e:
+            print(f"An error occurred: {e}")
+            continue
+    return all_company_data
 
 def print_usage_and_exit():
     print("Usage: python KBO_scraper.py <arg1> <arg2> <arg3>")
@@ -187,10 +184,10 @@ def setup_chrome_driver():
     return driver
 
 
-def main(locations, option, nace_codes):
+def main(location, option, nace_codes):
     driver = setup_chrome_driver() 
     try:
-        all_company_data = kbo_scraper(locations, nace_codes, option, driver)
+        all_company_data = kbo_scraper(location, nace_codes, option, driver)
         return all_company_data
     except Exception as e:
         print(f"Critical error, stopping the scraper: {e}")

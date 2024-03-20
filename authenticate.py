@@ -45,8 +45,7 @@ def set_login_status(user):
 
 def clear_login_status():
     """Clear the login session."""
-    current_params = st.query_params
-    current_params.clear()
+    st.query_params.clear()
 
 def check_login_status():
     """Check if the user is logged in by verifying the JWT token."""

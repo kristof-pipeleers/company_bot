@@ -9,6 +9,7 @@ from langchain_openai import OpenAIEmbeddings
 from langchain.output_parsers import ResponseSchema
 from langchain.output_parsers import StructuredOutputParser
 from langchain.text_splitter import RecursiveCharacterTextSplitter
+from google.cloud.firestore_v1.base_query import FieldFilter
 from scrapers import KBO_scraper
 import numpy as np
 import googlemaps
@@ -16,12 +17,54 @@ import pandas as pd
 import pydeck as pdk
 import datetime
 import jwt
+from google.cloud.firestore_v1 import ArrayUnion
 
 
 def load_data(file_path):
     loader = CSVLoader(file_path=file_path)
     data = loader.load()
     return data
+
+def get_relevant_locations(location, num):
+    
+    client = OpenAI(api_key=os.environ['OPENAI_KEY'], organization=st.secrets["OPENAI_ORG_ID"])
+    
+    # data = load_data("belgium-postal-codes.csv")
+    # splitter = RecursiveCharacterTextSplitter(
+    #     chunk_size=100,
+    #     chunk_overlap=0
+    # )
+    # splitted_docs = splitter.split_documents(data)
+
+    embeddings_model = OpenAIEmbeddings(openai_api_key=os.environ['OPENAI_KEY'])
+
+    persist_dir = "postal_code_embedding"
+    # if not os.path.exists(persist_dir):
+    #     os.makedirs(persist_dir)
+    # vectordb = Chroma.from_documents(documents=splitted_docs, embedding=embeddings_model, persist_directory=persist_dir)
+    # vectordb.persist()
+    vectordb = Chroma(persist_directory=persist_dir, embedding_function=embeddings_model)
+    
+    retriever = vectordb.as_retriever(search_type="similarity", search_kwargs={"k":num})
+    
+    qa = RetrievalQA.from_chain_type(
+        llm=client, 
+        chain_type="stuff",
+        retriever=retriever,
+        return_source_documents=True, 
+    )
+    gemeente_schema = ResponseSchema(name="gemeente_namen", description=f"Een lijst van 6 unieke, gemeenten in {location}.")
+    output_parser = StructuredOutputParser.from_response_schemas([gemeente_schema])
+    format_instructions = output_parser.get_format_instructions()
+    
+    query = f"Voor de provincie '{location}', geef een lijst van alle unieke en meest relevante gemeenten op basis van inwonersaantal. Gebruik de kolom 'Provincie naam' voor het matchen van de provincie en de kolom 'Gemeente naam' voor het ophalen van de gemeentenamen. Antwoord met een json-dict: {format_instructions}"
+
+    result = qa({"query": query})
+
+    result_as_dict = output_parser.parse(result['result'].strip())
+    print(f"\nRelevante locaties beschrijving voor {location}: {result_as_dict}")
+    return result_as_dict
+
 
 def get_relevant_NACE(industry, num):
    
@@ -52,12 +95,12 @@ def get_relevant_NACE(industry, num):
         return_source_documents=True, 
     )
     
-    nace_code_schema = ResponseSchema(name="nace_codes", description=f"An array of the {num} nace codes")
+    nace_code_schema = ResponseSchema(name="nace_codes", description=f"An array of the {num} most relevant nace codes")
     description_schema = ResponseSchema(name="descriptions", description="An array of the corresponding descriptions of the nace codes")
     output_parser = StructuredOutputParser.from_response_schemas([nace_code_schema, description_schema])
     format_instructions = output_parser.get_format_instructions()
     
-    query = f"Geef de 5 meest relevante NACE codes voor de {industry} sector op basis van de meegegeven informatie? Antwoord met een json-dict: {format_instructions}"
+    query = f"Geef de 3 meest relevante NACE codes voor de {industry} sector op basis van de meegegeven informatie? Antwoord met een json-dict: {format_instructions}"
 
     result = qa({"query": query})
 
@@ -69,45 +112,53 @@ def get_relevant_NACE(industry, num):
     print(f"\nRelevante NACE codes en beschrijving voor {industry}: {result_as_dict}")
     return result_as_dict
 
-def get_google_maps_companies(location, industry):
+def get_google_maps_companies(locations, industry):
     
     # Define the base URL for the Text Search request
     base_url = 'https://places.googleapis.com/v1/places:searchText'
     
-    # Construct the search query combining the location and industry
-    text_query = f"{industry} in {location}"
-    
-    headers = {
-        "Content-Type": "application/json",
-        "X-Goog-Api-Key": st.secrets["GOOGLE_API_KEY"],
-        "X-Goog-FieldMask": "places.displayName,places.formattedAddress,places.priceLevel",
-    }
+    company_data_list = []
+    for location in locations:
+        st.write(f"Zoek relevante bedrijven in regio :orange[{location}]...   ")
+        
+        # Construct the search query combining the location and industry
+        text_query = f"{industry} in {location}"
+        
+        headers = {
+            "Content-Type": "application/json",
+            "X-Goog-Api-Key": st.secrets["GOOGLE_API_KEY"],
+            "X-Goog-FieldMask": "places.displayName,places.formattedAddress,places.priceLevel",
+        }
 
-    data = {
-        "textQuery": f"{text_query}"
-    }
+        data = {
+            "textQuery": f"{text_query}"
+        }
 
-    response = requests.post(base_url, json=data, headers=headers)
+        response = requests.post(base_url, json=data, headers=headers)
 
-    if response.status_code == 200:
-        print("Google API request was successful!")
-        company_data_list = []
-        for place in response.json()["places"]:
-            place_name = place['displayName']['text']
-            place_addr = place['formattedAddress']
-            company_data_list.append([place_name, place_addr])
+        if response.status_code == 200:
+            print("Google API request was successful!")
+            
+            if 'places' in response.json() and response.json()["places"]:
+                for place in response.json()["places"]:
+                    place_name = place.get('displayName', {}).get('text', 'N/A')  # Using .get() to avoid KeyError
+                    place_addr = place.get('formattedAddress', 'N/A')
+                    company_data_list.append([place_name, place_addr])
+            else:
+                print("No places found in the response.")
+        else:
+            print(f"Google API request failed for {location} with status code:", response.status_code)
 
-        company_data_array = np.array(company_data_list)
-        return company_data_array
-    else:
-        print("Google API request failed with status code:", response.status_code)
-        return response.text    
+    company_data_array = np.array(company_data_list)
+    return company_data_array
 
 
 def add_to_db(db, industry, location, unique_array):
-    # Define collection reference
+    # Define collection references
     company_info_ref = db.collection("company_info")
+    queries_ref = db.collection("queries")  # New collection for queries
     users_ref = db.collection("users")  # Assuming users collection exists
+
     current_params = st.query_params
     token = jwt.decode(current_params.get('session_token'), options={"verify_signature": False})
     user_doc = users_ref.document(token.get("uid")).get()
@@ -120,46 +171,69 @@ def add_to_db(db, industry, location, unique_array):
             # Check if the company address already exists in the database
             existing_docs = company_info_ref.where("company_address", "==", company_address.strip()).limit(1).get()
 
-            if len(existing_docs) == 0:
-                # If the address does not exist, insert a new record
-                company_info_ref.add({
+            if not existing_docs:  # If the address does not exist, insert a new company record
+                added_doc_ref = company_info_ref.add({
                     "company_name": company_name.strip(),
-                    "company_address": company_address.strip(),
-                    "queries": [{
-                        "industry": industry,
-                        "location": location,
-                        "users": [user_email],
-                        "timestamp": datetime.datetime.now()
-                    }]
+                    "company_address": company_address.strip()
+                })[1]  # Extracting the document reference from the add operation
+            else:
+                added_doc_ref = existing_docs[0].reference 
+
+            # Now handle the query part
+            similar_queries = queries_ref.where("industry", "==", industry).where("location", "==", location).get()
+            
+            if not similar_queries:
+                # If no similar query exists, create a new one with the company reference
+                queries_ref.add({
+                    "companyRefs": [added_doc_ref],  # Store the company reference in an array
+                    "industry": industry,
+                    "location": location,
+                    "users": [user_email],
+                    "timestamp": datetime.datetime.now()
                 })
             else:
-                for doc in existing_docs:
-                    doc_ref = company_info_ref.document(doc.id)
-                    doc_data = doc.to_dict()
-                    query_found = False
+                # If a similar query exists, update it by adding the new company reference
+                for query_doc in similar_queries:
+                    query_ref = queries_ref.document(query_doc.id)
+                    query_data = query_doc.to_dict()
+                    
+                    # Add the new user if they're not already in the list
+                    if user_email not in query_data["users"]:
+                        query_data["users"].append(user_email)
 
-                    # Iterate through existing queries to find a match
-                    for query in doc_data["queries"]:
-                        if query["industry"] == industry and query["location"] == location:
-                            query_found = True
-                            # Add the new user if they're not already in the list
-                            if user_email not in query["users"]:
-                                query["users"].append(user_email)
-                                # Update the timestamp to reflect the latest query
-                                query["timestamp"] = datetime.datetime.now()
-                            break
+                    # Use ArrayUnion to ensure the company reference is added only if it's not already in the array
+                    query_ref.update({
+                        "companyRefs": ArrayUnion([added_doc_ref]),
+                        "users": query_data["users"],
+                        "timestamp": datetime.datetime.now()  # Update the timestamp
+                    })
 
-                    if not query_found:
-                        # If no matching query is found, add a new one
-                        doc_data["queries"].append({
-                            "industry": industry,
-                            "location": location,
-                            "users": [user_email],
-                            "timestamp": datetime.datetime.now()
-                        })
+    matching_queries = queries_ref.where("location", "==", location) \
+                              .where("industry", "==", industry) \
+                              .stream()
 
-                    # Update the document with the modified or new query data
-                    doc_ref.update({"queries": doc_data["queries"]})
+    # Initialize a list to hold the company document references
+    company_doc_refs = []
+
+    # Collect company document references from matching queries
+    for query in matching_queries:
+        company_refs = query.to_dict().get("companyRefs", [])
+        company_doc_refs.extend(company_refs)  # Add the list of company refs to the master list
+
+    # Now, for each unique company reference, fetch the company document and extract the address
+    company_addresses = []
+    seen_company_refs = set()  # To avoid processing the same company reference multiple times
+
+    for company_ref in company_doc_refs:
+        if company_ref not in seen_company_refs:
+            seen_company_refs.add(company_ref)  # Mark this company ref as seen
+            company_doc = company_ref.get()  # Fetch the company document
+            if company_doc.exists:
+                company_data = company_doc.to_dict()
+                company_addresses.append(company_data.get("company_address", "No address provided"))
+
+    print(company_addresses)
+
 
     return True
 
@@ -214,16 +288,39 @@ def generate_pydeck_map(unique_array):
 # Set openAi client , assistant ai and assistant ai thread
 def get_companies(db, location, area, industry):
     
-    with st.spinner(f"Retrieving relevant NACE codes for industry: {industry} ..."):
+    locations=[]
+    nace_codes=[]
+    with st.status(f"Relevante gemeenten ophalen voor :orange[{location}] ...", expanded=True) as status:  
+        nace_dict = get_relevant_locations(location, 40)
+        locations = nace_dict['gemeente_namen']
+        locations = list(set(locations))
+        if location in locations:
+            locations = [location]
+        for loc in locations:
+            st.write(loc)
+        status.update(label=f"Relevante postcodes ophalen voor :orange[{location}] ... :green[Compleet!]", state="complete", expanded=False)
+    
+    with st.status(f"Relevante NACE-codes ophalen voor :orange[{industry}] ...", expanded=True) as status:  
         nace_dict = get_relevant_NACE(industry, 10)
         nace_codes = nace_dict['nace_codes']
+        for code, description in zip(nace_dict['nace_codes'], nace_dict['descriptions']):
+            st.write(f"{code} - {description}")
+        status.update(label=f"Relevante NACE-codes ophalen voor :orange[{industry}] ... :green[Compleet!]", state="complete", expanded=False)
 
-    kbo_data_array = KBO_scraper.main([location], area, nace_codes)
-    print(f'kbo: {kbo_data_array}')
+    with st.status(f"Bedrijfsinformatie ophalen uit KBO-database met NACE-codes ... (dit kan enkele minuten duren)", expanded=True) as status:  
+        kbo_data_array = []
+        for location in locations:
+            st.write(f"Zoek relevante bedrijven in regio :orange[{location}]...   ")
+            company_data_array = KBO_scraper.main(location, area, nace_codes)
+            for company_data in company_data_array:
+                kbo_data_array.append(company_data) 
+        status.update(label="Bedrijfsinformatie ophalen uit KBO-database... :green[Compleet!]", state="complete", expanded=False)
+        print(f'kbo: {kbo_data_array}')
     
-    with st.spinner(f"Retrieving relevant companies from Google Maps..."):
-        maps_data_array = get_google_maps_companies(location, industry)
+    with st.status(f"Relevante bedrijven ophalen uit Google Maps...", expanded=True) as status:  
+        maps_data_array = get_google_maps_companies(locations, industry)
         print(f'maps: {maps_data_array}')
+        status.update(label="Relevante bedrijven ophalen uit Google Maps... :green[Compleet!]", state="complete", expanded=False)
 
    # Convert lists to numpy arrays if they are not already
     kbo_data_array = np.array(kbo_data_array) if isinstance(kbo_data_array, list) else kbo_data_array
@@ -248,14 +345,16 @@ def get_companies(db, location, area, industry):
         # Return an empty numpy array if both input arrays were empty
         unique_array = np.array([])
     
-    with st.spinner(f"Inserting company data into database..."):
+    with st.status(f"Bedrijfsgegevens invoegen in database...", expanded=True) as status:  
         if add_to_db(db, industry, location, unique_array):
             print(f"company information for {industry} in {location} is inserted")
         else:
             print(f"Error while interting company information for {industry} in {location}. Is the SQL database running?")
+        status.update(label="Bedrijfsgegevens invoegen in database... :green[Compleet!]", state="complete", expanded=False)
     
-    with st.spinner(f"Generating Map..."):
+    with st.status(f"Generating Map...", expanded=True) as status:  
         pydeck_map = generate_pydeck_map(unique_array)
+        status.update(label="Generating Map... :green[Compleet!]", state="complete", expanded=False)
     
     result += '<br>'.join([f"{item[0]} - {item[1]}" for item in unique_array])
 
