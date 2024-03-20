@@ -6,9 +6,9 @@ import json
 from companies import get_companies
 from company_strategies import get_company_strategies
 
-# __import__('pysqlite3')
-# import sys
-# sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
+__import__('pysqlite3')
+import sys
+sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
 
 file_loader = FileSystemLoader('.')
 env = Environment(loader=file_loader)
